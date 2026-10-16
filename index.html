@@ -141,10 +141,10 @@ async function handleFiles(files) {
 }
 
 const KNOWN_PLACES = [
-    "Kam Fung Court", "Mei Lam Estate", "Mei Tin Estate", "Sun Chui Estate", "Yan On Estate",
+    "Kam Fung Court", "Mei Lam Estate", "Mei Tin Estate", "Sun Chui Estate", "Yan On Estate", "Yan Tin Estate",
     "Chung On Estate", "Fung Wo Estate", "Lee On Estate", "Lung Hang Estate", "Lek Yuen Estate",
     "Yau Oi Estate", "Tai Hing Estate", "On Ting Estate", "Fu Tai Estate", "Shui Pin Wai Estate",
-    "Kam Fung", "Mei Lam", "Mei Tin", "Sun Chui", "Yan On", "Chung On", "Fung Wo", "Lee On",
+    "Kam Fung", "Mei Lam", "Mei Tin", "Sun Chui", "Yan Tin", "Yan On", "Chung On", "Fung Wo", "Lee On",
     "Lung Hang", "Lek Yuen", "Yau Oi", "Tai Hing", "On Ting", "Fu Tai", "Shui Pin Wai"
 ];
 
@@ -155,6 +155,7 @@ const FILENAME_PLACE = [
     [/LEO|Lee\s*On/i, "Lee On Estate"],
     [/LH|Lung\s*Hang/i, "Lung Hang Estate"],
     [/LY|Lek\s*Yuen/i, "Lek Yuen Estate"],
+    [/YNT|Yan\s*Tin/i, "Yan Tin Estate"],
     [/YO|Yau\s*Oi/i, "Yau Oi Estate"],
     [/TH|Tai\s*Hing/i, "Tai Hing Estate"],
     [/Mei\s*Lam/i, "Mei Lam Estate"],
@@ -190,20 +191,16 @@ function normalizePlace(raw) {
 }
 
 function extractCaseNo(text) {
-    const full = text.match(/\b(AS-[A-Z0-9]+(?:-[A-Z0-9]+)*-\d{4}-\d{3})\b/i);
-    if (full) return full[1].toUpperCase();
-    // After Referral / Case No. — only full case-like tokens, never bare AS
-    const after = text.match(/(?:Referral|Case\s*No\.?)\s*[:\s]*([A-Z0-9][A-Z0-9-]{6,})/i);
-    if (after) {
-        const tok = after[1].toUpperCase();
-        if (/^AS-[A-Z0-9-]+-\d{4}-\d{3}$/.test(tok)) return tok;
-        if (/^AS-.+/i.test(tok) && tok.length > 5 && tok !== "AS") return tok;
-    }
+    // Allow optional spaces around dashes (pdf.js may split tokens)
+    const full = text.match(/\b(AS(?:\s*-\s*[A-Z0-9]+)+\s*-\s*\d{4}\s*-\s*\d{3})\b/i);
+    if (full) return full[1].replace(/\s+/g, "").toUpperCase();
+    const after = text.match(/(?:Referral|Case\s*No\.?)\s*[:\s]*((?:AS)(?:\s*-\s*[A-Z0-9]+)+\s*-\s*\d{4}\s*-\s*\d{3})/i);
+    if (after) return after[1].replace(/\s+/g, "").toUpperCase();
     return "";
 }
 
 function extractEstate(text, filename) {
-    const stop = /(?=\s*(?:Findings|Photos|Referral|Audited|Date\s*:|Email|From\s*:|To\s*:|cc\s*:|Inspection|Contract|Location\s*:|Case\s*No))/i;
+    const stop = /(?=\s*(?:Findings|Photos|Referral|Audited|Date\s*:|Email|From\s*:|To\s*:|cc\s*:|Inspection|Contract|Location\s*:|Case\s*No|Tree\s*Information))/i;
     let raw = "";
     const loc = text.match(new RegExp("Location\\s*:\\s*(.+?)" + stop.source, "i"));
     if (loc) raw = loc[1];
@@ -212,7 +209,6 @@ function extractEstate(text, filename) {
         if (ed) raw = ed[1];
     }
     if (!raw) {
-        // Estate/ ... District: layout (two-column)
         const ed2 = text.match(/Estate\s*\/\s*(?:District\s*:)?\s*([A-Za-z][A-Za-z\s]+?(?:Estate|Court))/i);
         if (ed2) raw = ed2[1];
     }
@@ -237,31 +233,72 @@ function extractEstate(text, filename) {
     return estate || "";
 }
 
+function normalizeTreeId(raw) {
+    return String(raw || "").replace(/\s+/g, "").toUpperCase();
+}
+
+function isValidTreeId(id) {
+    return /^[A-Z]{2,6}-T\d{3,5}$/.test(id);
+}
+
+function extractTreeInformationIds(text) {
+    const ids = [];
+    const seen = new Set();
+    // Label often wraps across columns: "Tree  POT-T0194 \n Information:  POT-T0280"
+    const section = text.match(/\bTree\b([\s\S]*?)(?=\s*Location\s*:|\s*Findings\s*:|\s*Photos\b|\s*Audited\b|$)/i);
+    if (!section || !/Information/i.test(section[1].slice(0, 120))) return ids;
+    const re = /([A-Z]{2,6}\s*-\s*T\s*\d{3,5})/gi;
+    let m;
+    while ((m = re.exec(section[1])) !== null) {
+        const id = normalizeTreeId(m[1]);
+        if (isValidTreeId(id) && !seen.has(id)) {
+            seen.add(id);
+            ids.push(id);
+        }
+    }
+    return ids;
+}
+
 function extractFindings(text) {
-    const findings = [];
-    let block = text;
+    // Findings block ONLY — never Photos captions / Audited-by names
     const fm = text.match(/Findings\s*:?\s*([\s\S]*?)(?=\s*Photos\b|\s*Audited\b|$)/i);
-    if (fm) block = fm[1];
-    // PREFIX-Txxxx_Observation  (underscore/dash/spaces; pdf.js may insert spaces around dashes)
-    const treeRe = /([A-Z]{2,6}\s*-\s*T\s*\d{3,5})\s*[_\-\s]+\s*([A-Za-z][A-Za-z0-9\s\/\-\.]{1,80}?)(?=\s*(?:[A-Z]{2,6}\s*-\s*T\s*\d{3,5}|Photos\b|Audited\b|Referral\b|Location\b|Case\b|$))/gi;
+    const block = fm ? fm[1] : "";
+    const findings = [];
+
+    // Optional #N prefix may be glued: #1YO-T0374_Broken branch
+    const treeRe = /#?\d*([A-Z]{2,6}\s*-\s*T\s*\d{3,5})\s*[_\-\s]+\s*([A-Za-z][A-Za-z0-9\s\/\-\.]{1,80}?)(?=\s*(?:#?\d*[A-Z]{2,6}\s*-\s*T\s*\d{3,5}|Photos\b|Audited\b|Referral\b|Location\b|Case\b|$))/gi;
     let m;
     while ((m = treeRe.exec(block)) !== null) {
-        const treeId = m[1].replace(/\s+/g, "").toUpperCase();
+        const treeId = normalizeTreeId(m[1]);
+        if (!isValidTreeId(treeId)) continue;
         let obs = m[2].replace(/\s+/g, " ").trim();
         obs = obs.replace(/\s*(Photos|Audited|Referral|Location|Case No).*$/i, "").trim();
-        if (treeId.length >= 6 && obs.length >= 2 && !/^photo/i.test(obs)) {
+        if (obs.length >= 2 && !/^photo/i.test(obs)) {
             findings.push({ treeId, obs });
         }
     }
-    // Deduplicate by treeId (first observation wins) then by treeId|obs
-    const seen = new Set();
-    const unique = [];
-    for (const f of findings) {
-        if (seen.has(f.treeId)) continue;
-        seen.add(f.treeId);
-        unique.push(f);
+
+    if (findings.length > 0) {
+        const seen = new Set();
+        const unique = [];
+        for (const f of findings) {
+            if (seen.has(f.treeId)) continue;
+            seen.add(f.treeId);
+            unique.push(f);
+        }
+        return unique;
     }
-    return unique;
+
+    // Prose Findings (no tree ids in block) — keep whole string, pair with Tree Information ids
+    let prose = block.replace(/[\u0000-\u001f\u0085\u2028\u2029]/g, " ").replace(/\s+/g, " ").trim();
+    if (prose.length >= 2) {
+        const treeIds = extractTreeInformationIds(text);
+        if (treeIds.length > 0) {
+            return treeIds.map(treeId => ({ treeId, obs: prose }));
+        }
+        return [{ treeId: "", obs: prose }];
+    }
+    return [];
 }
 
 function parseReport(text, filename) {
