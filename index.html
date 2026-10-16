@@ -140,71 +140,146 @@ async function handleFiles(files) {
     document.getElementById('exportBtn').disabled = allRows.length === 0;
 }
 
-function parseReport(text, filename) {
-    const rows = [];
-    let caseNo = '';
-    const caseMatch = text.match(/(AS-[A-Z0-9-]+-\d{4}-\d{3})/i) || text.match(/Referral\s*Case\s*No\.?\s*[:\s]*([A-Z0-9-]+)/i);
-    if (caseMatch) caseNo = caseMatch[1] || caseMatch[0];
+const KNOWN_PLACES = [
+    "Kam Fung Court", "Mei Lam Estate", "Mei Tin Estate", "Sun Chui Estate", "Yan On Estate",
+    "Chung On Estate", "Fung Wo Estate", "Lee On Estate", "Lung Hang Estate", "Lek Yuen Estate",
+    "Yau Oi Estate", "Tai Hing Estate", "On Ting Estate", "Fu Tai Estate", "Shui Pin Wai Estate",
+    "Kam Fung", "Mei Lam", "Mei Tin", "Sun Chui", "Yan On", "Chung On", "Fung Wo", "Lee On",
+    "Lung Hang", "Lek Yuen", "Yau Oi", "Tai Hing", "On Ting", "Fu Tai", "Shui Pin Wai"
+];
 
-    let estate = '';
-    const estateMatch = text.match(/Location\s*[:\s]*([^\n\r]+)/i) || 
-                        text.match(/Estate\s*\/\s*District\s*[:\s]*([^\n\r]+)/i) ||
-                        text.match(/(Chung On|Fung Wo|Kam Fung|Lee On|Lung Hang|Lek Yuen|Yau Oi|Tai Hing|On Ting|Fu Tai|Shui Pin Wai)\s*Estate/i);
-    if (estateMatch) {
-        estate = estateMatch[1].replace(/Estate.*/, 'Estate').trim();
-        if (!estate.toLowerCase().includes('estate')) estate += ' Estate';
-    }
-    if (!estate) {
-        if (filename.includes('CHO')) estate = 'Chung On Estate';
-        else if (filename.includes('FUW')) estate = 'Fung Wo Estate';
-        else if (filename.includes('HKFU') || filename.includes('Kam Fung')) estate = 'Kam Fung Estate';
-        else if (filename.includes('LEO')) estate = 'Lee On Estate';
-        else if (filename.includes('LH')) estate = 'Lung Hang Estate';
-        else if (filename.includes('LY')) estate = 'Lek Yuen Estate';
-        else if (filename.includes('YO')) estate = 'Yau Oi Estate';
-        else if (filename.includes('TH')) estate = 'Tai Hing Estate';
-    }
+const FILENAME_PLACE = [
+    [/HKFU|Kam\s*Fung/i, "Kam Fung Court"],
+    [/CHO|Chung\s*On/i, "Chung On Estate"],
+    [/FUW|Fung\s*Wo/i, "Fung Wo Estate"],
+    [/LEO|Lee\s*On/i, "Lee On Estate"],
+    [/LH|Lung\s*Hang/i, "Lung Hang Estate"],
+    [/LY|Lek\s*Yuen/i, "Lek Yuen Estate"],
+    [/YO|Yau\s*Oi/i, "Yau Oi Estate"],
+    [/TH|Tai\s*Hing/i, "Tai Hing Estate"],
+    [/Mei\s*Lam/i, "Mei Lam Estate"],
+    [/Mei\s*Tin/i, "Mei Tin Estate"],
+    [/Sun\s*Chui/i, "Sun Chui Estate"],
+    [/Yan\s*On/i, "Yan On Estate"]
+];
 
-    let dateReceived = new Date().toISOString().slice(0, 10);
-    const dateMatch = text.match(/Date\s*[:\s]*(\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2})/);
-    if (dateMatch) dateReceived = dateMatch[1].replace(/\//g, '-');
-
-    const findings = [];
-    const findingRegex = /(?:#\d+)?\s*([A-Z]{1,4}[-_]?[A-Z0-9-]+)\s*[_\-\s]\s*([A-Za-z0-9\s\/]+?)(?=\s*(?:#\d+|[A-Z]{1,4}[-_][A-Z0-9]+|$|\n))/gi;
-    let m;
-    while ((m = findingRegex.exec(text)) !== null) {
-        const treeId = m[1].replace(/_$/, '').trim();
-        let obs = m[2].trim().replace(/\s+/g, ' ');
-        if (treeId.length > 3 && obs.length > 2 && !obs.toLowerCase().includes('photo')) {
-            findings.push({ treeId, obs });
+function normalizePlace(raw) {
+    if (!raw) return "";
+    let s = raw.replace(/\s+/g, " ").trim();
+    s = s.replace(/[\/|,].*$/, "").trim();
+    s = s.replace(/\b(Sha Tin|Tuen Mun|Yuen Long|Kwai Tsing|Islands|District)\b.*$/i, "").trim();
+    for (const name of KNOWN_PLACES) {
+        const re = new RegExp("^" + name.replace(/ /g, "\\s+") + "(?:\\s+(Estate|Court))?", "i");
+        const m = s.match(re);
+        if (m) {
+            if (/court/i.test(name) || /court/i.test(m[0])) {
+                return name.replace(/\s+(Estate|Court)$/i, "") + (/court/i.test(name) ? " Court" : ( /court/i.test(m[0]) ? " Court" : " Estate"));
+            }
+            if (/estate/i.test(name) || /estate/i.test(m[0])) {
+                return name.replace(/\s+(Estate|Court)$/i, "") + " Estate";
+            }
+            // bare name like "Kam Fung" — prefer Court if known as court
+            if (/^Kam Fung$/i.test(name)) return "Kam Fung Court";
+            return name + " Estate";
         }
     }
+    // If raw already ends with Estate/Court, keep first 2–4 words + suffix
+    const ec = s.match(/^([A-Za-z]+(?:\s+[A-Za-z]+){0,3})\s+(Estate|Court)\b/i);
+    if (ec) return ec[1] + " " + ec[2].charAt(0).toUpperCase() + ec[2].slice(1).toLowerCase();
+    return s.split(/\s+/).slice(0, 4).join(" ");
+}
 
-    if (findings.length === 0) {
-        const lines = text.split(/\n|\r/).map(l => l.trim()).filter(l => l);
-        for (const line of lines) {
-            const simple = line.match(/^([A-Z]{2,4}-[A-Z0-9-]+)\s+(.+)$/i);
-            if (simple && simple[2].length > 3 && !simple[2].toLowerCase().includes('photo')) {
-                findings.push({ treeId: simple[1], obs: simple[2].trim() });
+function extractCaseNo(text) {
+    const full = text.match(/\b(AS-[A-Z0-9]+(?:-[A-Z0-9]+)*-\d{4}-\d{3})\b/i);
+    if (full) return full[1].toUpperCase();
+    // After Referral / Case No. — only full case-like tokens, never bare AS
+    const after = text.match(/(?:Referral|Case\s*No\.?)\s*[:\s]*([A-Z0-9][A-Z0-9-]{6,})/i);
+    if (after) {
+        const tok = after[1].toUpperCase();
+        if (/^AS-[A-Z0-9-]+-\d{4}-\d{3}$/.test(tok)) return tok;
+        if (/^AS-.+/i.test(tok) && tok.length > 5 && tok !== "AS") return tok;
+    }
+    return "";
+}
+
+function extractEstate(text, filename) {
+    const stop = /(?=\s*(?:Findings|Photos|Referral|Audited|Date\s*:|Email|From\s*:|To\s*:|cc\s*:|Inspection|Contract|Location\s*:|Case\s*No))/i;
+    let raw = "";
+    const loc = text.match(new RegExp("Location\\s*:\\s*(.+?)" + stop.source, "i"));
+    if (loc) raw = loc[1];
+    if (!raw) {
+        const ed = text.match(new RegExp("Estate\\s*\\/?\\s*District\\s*:\\s*(.+?)" + stop.source, "i"));
+        if (ed) raw = ed[1];
+    }
+    if (!raw) {
+        // Estate/ ... District: layout (two-column)
+        const ed2 = text.match(/Estate\s*\/\s*(?:District\s*:)?\s*([A-Za-z][A-Za-z\s]+?(?:Estate|Court))/i);
+        if (ed2) raw = ed2[1];
+    }
+    let estate = normalizePlace(raw);
+    if (!estate || estate.length < 3) {
+        for (const name of KNOWN_PLACES) {
+            const re = new RegExp("\\b" + name.replace(/ /g, "\\s+") + "(?:\\s+(Estate|Court))?\\b", "i");
+            if (re.test(text)) {
+                estate = normalizePlace(name);
+                break;
             }
         }
     }
+    if (!estate) {
+        for (const [re, place] of FILENAME_PLACE) {
+            if (re.test(filename) || re.test(text)) {
+                estate = place;
+                break;
+            }
+        }
+    }
+    return estate || "";
+}
 
+function extractFindings(text) {
+    const findings = [];
+    let block = text;
+    const fm = text.match(/Findings\s*:?\s*([\s\S]*?)(?=\s*Photos\b|\s*Audited\b|$)/i);
+    if (fm) block = fm[1];
+    // PREFIX-Txxxx_Observation  (underscore/dash/spaces; pdf.js may insert spaces around dashes)
+    const treeRe = /([A-Z]{2,6}\s*-\s*T\s*\d{3,5})\s*[_\-\s]+\s*([A-Za-z][A-Za-z0-9\s\/\-\.]{1,80}?)(?=\s*(?:[A-Z]{2,6}\s*-\s*T\s*\d{3,5}|Photos\b|Audited\b|Referral\b|Location\b|Case\b|$))/gi;
+    let m;
+    while ((m = treeRe.exec(block)) !== null) {
+        const treeId = m[1].replace(/\s+/g, "").toUpperCase();
+        let obs = m[2].replace(/\s+/g, " ").trim();
+        obs = obs.replace(/\s*(Photos|Audited|Referral|Location|Case No).*$/i, "").trim();
+        if (treeId.length >= 6 && obs.length >= 2 && !/^photo/i.test(obs)) {
+            findings.push({ treeId, obs });
+        }
+    }
+    // Deduplicate by treeId (first observation wins) then by treeId|obs
     const seen = new Set();
     const unique = [];
     for (const f of findings) {
-        const key = f.treeId + '|' + f.obs;
-        if (!seen.has(key)) {
-            seen.add(key);
-            unique.push(f);
-        }
+        if (seen.has(f.treeId)) continue;
+        seen.add(f.treeId);
+        unique.push(f);
     }
+    return unique;
+}
+
+function parseReport(text, filename) {
+    const rows = [];
+    const caseNo = extractCaseNo(text);
+    const estate = extractEstate(text, filename || "");
+
+    let dateReceived = new Date().toISOString().slice(0, 10);
+    const dateMatch = text.match(/\bDate\s*:\s*(\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2})/i);
+    if (dateMatch) dateReceived = dateMatch[1].replace(/\//g, "-");
+
+    const unique = extractFindings(text);
 
     for (const f of unique) {
         rows.push([
             "AS",
             estate || "Unknown Estate",
-            caseNo || filename.replace('.pdf', ''),
+            caseNo || (filename || "").replace(/\.pdf$/i, ""),
             dateReceived,
             f.treeId,
             f.obs,
@@ -216,7 +291,7 @@ function parseReport(text, filename) {
         rows.push([
             "AS",
             estate || "Unknown Estate",
-            caseNo || filename.replace('.pdf', ''),
+            caseNo || (filename || "").replace(/\.pdf$/i, ""),
             dateReceived,
             "",
             "(未能自動擷取 Findings，請手動補充)",
