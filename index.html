@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audit Report PDF → Excel Converter（團隊共用版）</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: "Segoe UI", Arial, "Microsoft JhengHei", sans-serif; margin: 0; background: #f0f2f5; color: #333; }
+        .header { background: #1b5e20; color: white; padding: 16px 24px; }
+        .header h1 { margin: 0; font-size: 22px; }
+        .container { max-width: 1400px; margin: 20px auto; padding: 0 16px; }
+        .guide { background: #fff8e1; border-left: 5px solid #ffc107; padding: 14px 16px; margin-bottom: 20px; border-radius: 6px; font-size: 14px; }
+        .guide strong { color: #e65100; }
+        .drop-zone {
+            border: 3px dashed #4caf50;
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            background: white;
+            margin-bottom: 20px;
+            transition: all 0.2s;
+        }
+        .drop-zone.dragover { background: #e8f5e9; border-color: #2e7d32; }
+        .drop-zone p { margin: 8px 0; font-size: 16px; }
+        .btn { background: #1976d2; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 15px; margin: 4px; }
+        .btn:hover { background: #1565c0; }
+        .btn.green { background: #388e3c; }
+        .btn.green:hover { background: #2e7d32; }
+        .status { margin: 10px 0; padding: 10px; border-radius: 6px; }
+        .status.info { background: #e3f2fd; }
+        .status.success { background: #e8f5e9; }
+        .status.error { background: #ffebee; }
+        table { width: 100%; border-collapse: collapse; background: white; font-size: 13px; }
+        th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; }
+        th { background: #4caf50; color: white; position: sticky; top: 0; }
+        tr:nth-child(even) { background: #f9f9f9; }
+        .controls { margin: 12px 0; }
+        .file-list { margin: 10px 0; font-size: 14px; }
+        .file-list li { margin: 4px 0; }
+        .footer-note { margin-top: 30px; padding: 12px; background: #eee; border-radius: 6px; font-size: 13px; color: #555; }
+    </style>
+</head>
+<body>
+<div class="header">
+    <h1>🌳 Audit Report PDF → Excel Converter</h1>
+    <div style="font-size:14px; opacity:0.9;">團隊共用工具｜拖放 PDF 自動擷取 Findings → 匯出 Master Referral List 格式</div>
+</div>
+
+<div class="container">
+    <div class="guide">
+        <strong>如何讓大家使用：</strong><br>
+        1. 直接開啟網頁：<a href="https://davychan188.github.io/audit-pdf-to-excel/" target="_blank" rel="noopener">https://davychan188.github.io/audit-pdf-to-excel/</a><br>
+        2. 用 Chrome / Edge / Firefox 開啟即可使用，無需安裝任何程式<br>
+        3. 需要網路連線（載入 PDF 解析功能）<br>
+        4. 支援一次拖入多份報告（Chung On、Fung Wo、Kam Fung、Lee On、Lung Hang、Lek Yuen、Yau Oi、Tai Hing 等）<br>
+        5. 亦可下載本頁的 HTML 檔案離線分享（Email、Teams、共用資料夾）
+    </div>
+
+    <div class="drop-zone" id="dropZone">
+        <p style="font-size:18px; font-weight:bold;">📁 拖放 Audit Report PDF 到這裡</p>
+        <p>支援一次拖入多個 PDF</p>
+        <p style="color:#666;">或點擊下方按鈕選擇檔案</p>
+        <input type="file" id="fileInput" accept=".pdf" multiple style="display:none;">
+        <button class="btn" onclick="document.getElementById('fileInput').click()">選擇 PDF 檔案</button>
+    </div>
+
+    <div id="status"></div>
+    <div id="fileList" class="file-list"></div>
+
+    <div class="controls">
+        <button class="btn green" id="exportBtn" onclick="exportToExcel()" disabled>📥 匯出為 Excel (.xlsx)</button>
+        <button class="btn" onclick="clearAll()">🗑️ 清除全部</button>
+    </div>
+
+    <div id="tableContainer"></div>
+
+    <div class="footer-note">
+        提示：PDF 必須是「可選取文字」的版本（不是純掃描圖片）。若擷取不完整，可在匯出後的 Excel 手動補充。此工具只在瀏覽器本地處理，不會上傳任何檔案。
+    </div>
+</div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+let allRows = [];
+
+const headers = [
+    "Source of Referral", "Estate", "Case No.", "Date Received", "Tree ID", "Observation",
+    "Mitigation", "Inspection Date", "Date informed EMO upon inspection",
+    "Case deadline (normal case)", "TS no action", "TS Mitigation work",
+    "Works Completion Date", "Date informed EMO upon works completion",
+    "Confirmed date", "Confirmed by", "Remarks", "TS Action"
+];
+
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    handleFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', () => handleFiles(fileInput.files));
+
+function setStatus(msg, type = 'info') {
+    document.getElementById('status').innerHTML = `<div class="status ${type}">${msg}</div>`;
+}
+
+async function handleFiles(files) {
+    if (!files.length) return;
+    setStatus(`正在處理 ${files.length} 個 PDF...`, 'info');
+    document.getElementById('fileList').innerHTML = '<ul>' + Array.from(files).map(f => `<li>${f.name}</li>`).join('') + '</ul>';
+
+    for (const file of files) {
+        if (!file.name.toLowerCase().endsWith('.pdf')) continue;
+        try {
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            let fullText = '';
+            const pagesToRead = Math.min(pdf.numPages, 2);
+            for (let i = 1; i <= pagesToRead; i++) {
+                const page = await pdf.getPage(i);
+                const content = await page.getTextContent();
+                fullText += content.items.map(item => item.str).join(' ') + '\n';
+            }
+            const rows = parseReport(fullText, file.name);
+            allRows.push(...rows);
+            setStatus(`已處理：${file.name}（擷取到 ${rows.length} 筆樹資料）`, 'success');
+        } catch (err) {
+            console.error(err);
+            setStatus(`處理 ${file.name} 時發生錯誤：${err.message}`, 'error');
+        }
+    }
+    renderTable();
+    document.getElementById('exportBtn').disabled = allRows.length === 0;
+}
+
+function parseReport(text, filename) {
+    const rows = [];
+    let caseNo = '';
+    const caseMatch = text.match(/(AS-[A-Z0-9-]+-\d{4}-\d{3})/i) || text.match(/Referral\s*Case\s*No\.?\s*[:\s]*([A-Z0-9-]+)/i);
+    if (caseMatch) caseNo = caseMatch[1] || caseMatch[0];
+
+    let estate = '';
+    const estateMatch = text.match(/Location\s*[:\s]*([^\n\r]+)/i) || 
+                        text.match(/Estate\s*\/\s*District\s*[:\s]*([^\n\r]+)/i) ||
+                        text.match(/(Chung On|Fung Wo|Kam Fung|Lee On|Lung Hang|Lek Yuen|Yau Oi|Tai Hing|On Ting|Fu Tai|Shui Pin Wai)\s*Estate/i);
+    if (estateMatch) {
+        estate = estateMatch[1].replace(/Estate.*/, 'Estate').trim();
+        if (!estate.toLowerCase().includes('estate')) estate += ' Estate';
+    }
+    if (!estate) {
+        if (filename.includes('CHO')) estate = 'Chung On Estate';
+        else if (filename.includes('FUW')) estate = 'Fung Wo Estate';
+        else if (filename.includes('HKFU') || filename.includes('Kam Fung')) estate = 'Kam Fung Estate';
+        else if (filename.includes('LEO')) estate = 'Lee On Estate';
+        else if (filename.includes('LH')) estate = 'Lung Hang Estate';
+        else if (filename.includes('LY')) estate = 'Lek Yuen Estate';
+        else if (filename.includes('YO')) estate = 'Yau Oi Estate';
+        else if (filename.includes('TH')) estate = 'Tai Hing Estate';
+    }
+
+    let dateReceived = new Date().toISOString().slice(0, 10);
+    const dateMatch = text.match(/Date\s*[:\s]*(\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2})/);
+    if (dateMatch) dateReceived = dateMatch[1].replace(/\//g, '-');
+
+    const findings = [];
+    const findingRegex = /(?:#\d+)?\s*([A-Z]{1,4}[-_]?[A-Z0-9-]+)\s*[_\-\s]\s*([A-Za-z0-9\s\/]+?)(?=\s*(?:#\d+|[A-Z]{1,4}[-_][A-Z0-9]+|$|\n))/gi;
+    let m;
+    while ((m = findingRegex.exec(text)) !== null) {
+        const treeId = m[1].replace(/_$/, '').trim();
+        let obs = m[2].trim().replace(/\s+/g, ' ');
+        if (treeId.length > 3 && obs.length > 2 && !obs.toLowerCase().includes('photo')) {
+            findings.push({ treeId, obs });
+        }
+    }
+
+    if (findings.length === 0) {
+        const lines = text.split(/\n|\r/).map(l => l.trim()).filter(l => l);
+        for (const line of lines) {
+            const simple = line.match(/^([A-Z]{2,4}-[A-Z0-9-]+)\s+(.+)$/i);
+            if (simple && simple[2].length > 3 && !simple[2].toLowerCase().includes('photo')) {
+                findings.push({ treeId: simple[1], obs: simple[2].trim() });
+            }
+        }
+    }
+
+    const seen = new Set();
+    const unique = [];
+    for (const f of findings) {
+        const key = f.treeId + '|' + f.obs;
+        if (!seen.has(key)) {
+            seen.add(key);
+            unique.push(f);
+        }
+    }
+
+    for (const f of unique) {
+        rows.push([
+            "AS",
+            estate || "Unknown Estate",
+            caseNo || filename.replace('.pdf', ''),
+            dateReceived,
+            f.treeId,
+            f.obs,
+            "", "", "", "", "", "", "", "", "", "", "", ""
+        ]);
+    }
+
+    if (rows.length === 0 && (caseNo || estate)) {
+        rows.push([
+            "AS",
+            estate || "Unknown Estate",
+            caseNo || filename.replace('.pdf', ''),
+            dateReceived,
+            "",
+            "(未能自動擷取 Findings，請手動補充)",
+            "", "", "", "", "", "", "", "", "", "", "", ""
+        ]);
+    }
+
+    return rows;
+}
+
+function renderTable() {
+    if (!allRows.length) {
+        document.getElementById('tableContainer').innerHTML = '<p>尚未有資料。請拖入 PDF。</p>';
+        return;
+    }
+    let html = '<table><thead><tr>';
+    headers.forEach(h => html += `<th>${h}</th>`);
+    html += '</tr></thead><tbody>';
+    allRows.forEach(row => {
+        html += '<tr>';
+        row.forEach(cell => html += `<td>${cell || ''}</td>`);
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    document.getElementById('tableContainer').innerHTML = html;
+}
+
+function exportToExcel() {
+    if (!allRows.length) return;
+    const wb = XLSX.utils.book_new();
+    const wsData = [headers, ...allRows];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    const colWidths = headers.map((h, i) => {
+        const max = Math.max(h.length, ...allRows.map(r => String(r[i] || '').length));
+        return { wch: Math.min(max + 2, 35) };
+    });
+    ws['!cols'] = colWidths;
+    XLSX.utils.book_append_sheet(wb, ws, "Referral List");
+    const filename = `Audit_Reports_Referral_${new Date().toISOString().slice(0,10)}.xlsx`;
+    XLSX.writeFile(wb, filename);
+}
+
+function clearAll() {
+    allRows = [];
+    document.getElementById('tableContainer').innerHTML = '';
+    document.getElementById('fileList').innerHTML = '';
+    document.getElementById('status').innerHTML = '';
+    document.getElementById('exportBtn').disabled = true;
+    fileInput.value = '';
+}
+
+renderTable();
+</script>
+</body>
+</html>
