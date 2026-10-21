@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Audit Report PDF → Excel Converter（團隊共用版）</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.min.js"></script>
     <style>
         * { box-sizing: border-box; }
         body { font-family: "Segoe UI", Arial, "Microsoft JhengHei", sans-serif; margin: 0; background: #f0f2f5; color: #333; }
@@ -39,7 +39,7 @@
         tr:nth-child(even) { background: #f9f9f9; }
         .controls { margin: 12px 0; }
         .file-list { margin: 10px 0; font-size: 14px; }
-        .file-list li { margin: 4px 0; }
+        .file-list div { margin: 4px 0; }
         .footer-note { margin-top: 30px; padding: 12px; background: #eee; border-radius: 6px; font-size: 13px; color: #555; }
     </style>
 </head>
@@ -115,7 +115,7 @@ function setStatus(msg, type = 'info') {
 async function handleFiles(files) {
     if (!files.length) return;
     setStatus(`正在處理 ${files.length} 個 PDF...`, 'info');
-    document.getElementById('fileList').innerHTML = '<ul>' + Array.from(files).map(f => `<li>${f.name}</li>`).join('') + '</ul>';
+    document.getElementById('fileList').innerHTML = Array.from(files).map(f => `<div>${f.name}</div>`).join('');
 
     for (const file of files) {
         if (!file.name.toLowerCase().endsWith('.pdf')) continue;
@@ -367,6 +367,33 @@ function exportToExcel() {
         return { wch: Math.min(max + 2, 35) };
     });
     ws['!cols'] = colWidths;
+
+    const thinBorder = {
+        top: { style: "thin", color: { rgb: "000000" } },
+        bottom: { style: "thin", color: { rgb: "000000" } },
+        left: { style: "thin", color: { rgb: "000000" } },
+        right: { style: "thin", color: { rgb: "000000" } }
+    };
+    const headerStyle = {
+        font: { bold: true, color: { rgb: "FFFFFF" } },
+        fill: { patternType: "solid", fgColor: { rgb: "4CAF50" } },
+        border: thinBorder,
+        alignment: { vertical: "center", wrapText: true }
+    };
+    const bodyStyle = {
+        border: thinBorder,
+        alignment: { vertical: "center", wrapText: true }
+    };
+
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let R = range.s.r; R <= range.e.r; R++) {
+        for (let C = range.s.c; C <= range.e.c; C++) {
+            const addr = XLSX.utils.encode_cell({ r: R, c: C });
+            if (!ws[addr]) ws[addr] = { t: "s", v: "" };
+            ws[addr].s = R === 0 ? headerStyle : bodyStyle;
+        }
+    }
+
     XLSX.utils.book_append_sheet(wb, ws, "Referral List");
     const filename = `Audit_Reports_Referral_${new Date().toISOString().slice(0,10)}.xlsx`;
     XLSX.writeFile(wb, filename);
