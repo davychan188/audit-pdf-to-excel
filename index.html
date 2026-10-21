@@ -72,6 +72,7 @@
 
     <div class="controls">
         <button class="btn green" id="exportBtn" onclick="exportToExcel()" disabled>📥 匯出為 Excel (.xlsx)</button>
+        <button class="btn" onclick="copyTable()" style="background:#607D8B;">📋 複製表格</button>
         <button class="btn" onclick="clearAll()">🗑️ 清除全部</button>
     </div>
 
@@ -369,6 +370,16 @@ function exportToExcel() {
     XLSX.utils.book_append_sheet(wb, ws, "Referral List");
     const filename = `Audit_Reports_Referral_${new Date().toISOString().slice(0,10)}.xlsx`;
     XLSX.writeFile(wb, filename);
+}
+
+function copyTable() {
+    if (!allRows.length) return;
+    const text = [headers, ...allRows].map(row => row.join('\t')).join('\n');
+    navigator.clipboard.writeText(text).then(() => {
+        setStatus('已複製表格內容（可直接貼到 Excel）', 'success');
+    }).catch(() => {
+        setStatus('複製失敗，請手動選取表格', 'error');
+    });
 }
 
 function clearAll() {
