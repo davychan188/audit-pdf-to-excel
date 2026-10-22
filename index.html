@@ -226,20 +226,29 @@ function normalizePlace(raw) {
 
 function normalizePdfText(text) {
     let t = String(text || "");
-    // Compact spaced tree ids: "S M - T0 209" / "T N Y 2 - T0 414" / "H K F U - T 0005"
-    t = t.replace(/\b([A-Z](?:\s*[A-Z0-9]){1,7})\s*-\s*([A-Za-z])\s*(\d(?:\s*\d){2,4})\b/g, (_, a, b, c) => {
-        return a.replace(/\s+/g, "") + "-" + b.replace(/\s+/g, "").toUpperCase() + c.replace(/\s+/g, "");
-    });
-    // Also PREFIX_T1234 with underscore used as dash
-    t = t.replace(/\b([A-Z]{1,6}\d{0,2})\s*[_\-]\s*([A-Za-z])\s*(\d{3,5})\b/g, "$1-$2$3");
+    // 1) Glue dashes and date slashes (pdf.js: "AS - T NS", "202 6 / 0 7 / 13")
+    t = t.replace(/\s*-\s*/g, "-");
+    t = t.replace(/\s*\/\s*/g, "/");
+    // 2) Glue split alphanumerics until stable: "S M-T0 209"→"SM-T0209", "202 6/08/04"→"2026/08/04"
+    for (let i = 0; i < 20; i++) {
+        const next = t.replace(/([A-Z0-9])\s+([A-Z0-9])/g, "$1$2");
+        if (next === t) break;
+        t = next;
+    }
+    // 3) Single capital + spaced lowercase word: "S hek"→"Shek", "_H anger"→"_Hanger"
+    t = t.replace(/_([A-Z])\s+([a-z]+)/g, "_$1$2");
+    t = t.replace(/\b([A-Z])\s+([a-z]{2,})\b/g, "$1$2");
+    // 4) Normalize leftover spaces
+    t = t.replace(/[ \t]+/g, " ");
     return t;
 }
 
 function fixObservationSpacing(obs) {
     let o = String(obs || "");
-    // "H anger" → "Hanger", "D ead" → "Dead" (letter + space + lowercase rest)
+    o = o.replace(/_([A-Z])\s+([a-z]+)/g, "_$1$2");
     o = o.replace(/\b([A-Z])\s+([a-z]{2,})\b/g, "$1$2");
-    // Collapse leftover single-letter splits: "A symmetric" already handled; multi-word ok
+    // Entire obs is one split word: "H anger"
+    o = o.replace(/^([A-Z])\s+([a-z]+)$/g, "$1$2");
     o = o.replace(/\s+/g, " ").trim();
     return o;
 }
@@ -642,6 +651,7 @@ function parseTreeRemovalForm(text, filename) {
 }
 
 function parseReport(text, filename) {
+    text = normalizePdfText(text);
     if (isTreeRemovalForm(text)) {
         return parseTreeRemovalForm(text, filename);
     }
