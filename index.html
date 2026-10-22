@@ -156,9 +156,10 @@ async function handleFiles(files) {
 
 const KNOWN_PLACES = [
     "Kam Fung Court", "Mei Lam Estate", "Mei Tin Estate", "Sun Chui Estate", "Yan On Estate", "Yan Tin Estate",
+    "Tin Yiu (2) Estate", "Tin Yiu (1) Estate", "Tin Shui (1) Estate", "Tin Shui (2) Estate",
     "Chung On Estate", "Fung Wo Estate", "Lee On Estate", "Lung Hang Estate", "Lek Yuen Estate", "Ching Ho Estate",
     "Yau Oi Estate", "Tai Hing Estate", "On Ting Estate", "Fu Tai Estate", "Shui Pin Wai Estate",
-    "Kam Fung", "Mei Lam", "Mei Tin", "Sun Chui", "Yan Tin", "Yan On", "Chung On", "Fung Wo", "Lee On",
+    "Kam Fung", "Mei Lam", "Mei Tin", "Sun Chui", "Yan Tin", "Yan On", "Tin Yiu", "Tin Shui", "Chung On", "Fung Wo", "Lee On",
     "Lung Hang", "Lek Yuen", "Ching Ho", "Yau Oi", "Tai Hing", "On Ting", "Fu Tai", "Shui Pin Wai"
 ];
 
@@ -177,8 +178,16 @@ const FILENAME_PLACE = [
     [/Mei\s*Lam/i, "Mei Lam Estate"],
     [/Mei\s*Tin/i, "Mei Tin Estate"],
     [/Sun\s*Chui/i, "Sun Chui Estate"],
-    [/Yan\s*On/i, "Yan On Estate"]
+    [/Yan\s*On/i, "Yan On Estate"],
+    [/TNY2|Tin\s*Yiu\s*\(2\)/i, "Tin Yiu (2) Estate"],
+    [/TNY1|Tin\s*Yiu\s*\(1\)/i, "Tin Yiu (1) Estate"],
+    [/TS1|Tin\s*Shui\s*\(1\)/i, "Tin Shui (1) Estate"],
+    [/TS2|Tin\s*Shui\s*\(2\)/i, "Tin Shui (2) Estate"]
 ];
+
+function escapeRegExp(s) {
+    return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 function normalizePlace(raw) {
     if (!raw) return "";
@@ -186,7 +195,7 @@ function normalizePlace(raw) {
     s = s.replace(/[\/|,].*$/, "").trim();
     s = s.replace(/\b(Sha Tin|Tuen Mun|Yuen Long|Kwai Tsing|Islands|District)\b.*$/i, "").trim();
     for (const name of KNOWN_PLACES) {
-        const re = new RegExp("^" + name.replace(/ /g, "\\s+") + "(?:\\s+(Estate|Court))?", "i");
+        const re = new RegExp("^" + escapeRegExp(name).replace(/ /g, "\\s+") + "(?:\\s+(Estate|Court))?", "i");
         const m = s.match(re);
         if (m) {
             if (/court/i.test(name) || /court/i.test(m[0])) {
@@ -200,10 +209,14 @@ function normalizePlace(raw) {
             return name + " Estate";
         }
     }
-    // If raw already ends with Estate/Court, keep first 2–4 words + suffix
-    const ec = s.match(/^([A-Za-z]+(?:\s+[A-Za-z]+){0,3})\s+(Estate|Court)\b/i);
-    if (ec) return ec[1] + " " + ec[2].charAt(0).toUpperCase() + ec[2].slice(1).toLowerCase();
-    return s.split(/\s+/).slice(0, 4).join(" ");
+    // Keep parentheses e.g. Tin Yiu (2) Estate
+    const ec = s.match(/^([A-Za-z]+(?:\s+[A-Za-z]+)*(?:\s*\(\d+\))?)\s+(Estate|Court)\b/i);
+    if (ec) {
+        const base = ec[1].replace(/\s+/g, " ").trim();
+        const suf = ec[2].charAt(0).toUpperCase() + ec[2].slice(1).toLowerCase();
+        return base + " " + suf;
+    }
+    return s.split(/\s+/).slice(0, 5).join(" ");
 }
 
 function extractCaseNo(text) {
@@ -225,13 +238,13 @@ function extractEstate(text, filename) {
         if (ed) raw = ed[1];
     }
     if (!raw) {
-        const ed2 = text.match(/Estate\s*\/\s*(?:District\s*:)?\s*([A-Za-z][A-Za-z\s]+?(?:Estate|Court))/i);
+        const ed2 = text.match(/Estate\s*\/\s*(?:District\s*:)?\s*([A-Za-z][A-Za-z0-9\s()]+?(?:Estate|Court))/i);
         if (ed2) raw = ed2[1];
     }
     let estate = normalizePlace(raw);
     if (!estate || estate.length < 3) {
         for (const name of KNOWN_PLACES) {
-            const re = new RegExp("\\b" + name.replace(/ /g, "\\s+") + "(?:\\s+(Estate|Court))?\\b", "i");
+            const re = new RegExp("\\b" + escapeRegExp(name).replace(/ /g, "\\s+") + "(?:\\s+(Estate|Court))?\\b", "i");
             if (re.test(text)) {
                 estate = normalizePlace(name);
                 break;
@@ -254,7 +267,8 @@ function normalizeTreeId(raw) {
 }
 
 function isValidTreeId(id) {
-    return /^[A-Z]{2,6}-T\d{3,5}$/.test(id);
+    // Prefix may include digits: TNY2, TS1, YO, HKFU, POT
+    return /^[A-Z]{1,6}\d{0,2}-T\d{3,5}$/.test(id);
 }
 
 function extractTreeInformationIds(text) {
@@ -263,7 +277,7 @@ function extractTreeInformationIds(text) {
     // Label often wraps across columns: "Tree  POT-T0194 \n Information:  POT-T0280"
     const section = text.match(/\bTree\b([\s\S]*?)(?=\s*Location\s*:|\s*Findings\s*:|\s*Photos\b|\s*Audited\b|$)/i);
     if (!section || !/Information/i.test(section[1].slice(0, 120))) return ids;
-    const re = /([A-Z]{2,6}\s*-\s*T\s*\d{3,5})/gi;
+    const re = /([A-Z]{1,6}\d{0,2}\s*-\s*T\s*\d{3,5})/gi;
     let m;
     while ((m = re.exec(section[1])) !== null) {
         const id = normalizeTreeId(m[1]);
@@ -275,24 +289,49 @@ function extractTreeInformationIds(text) {
     return ids;
 }
 
+function normalizeObservation(treeId, obs) {
+    let o = String(obs || "").replace(/_/g, " ").replace(/\s+/g, " ").trim();
+    o = o.replace(/\s*(Photos|Audited|Referral|Location|Case No).*$/i, "").trim();
+    // #4TNY1-T0327_& T0329_Dead fronds → "T0327 & T0329 Dead fronds"
+    if (/^&\s*/.test(o)) {
+        const shortId = treeId.match(/-(T\d{3,5})$/i);
+        if (shortId) o = (shortId[1] + " " + o).replace(/\s+/g, " ").trim();
+    }
+    return o;
+}
+
 function extractFindings(text) {
     // Findings block ONLY — never Photos captions / Audited-by names
     const fm = text.match(/Findings\s*:?\s*([\s\S]*?)(?=\s*Photos\b|\s*Audited\b|$)/i);
     const block = fm ? fm[1] : "";
     const findings = [];
 
-    // Optional #N prefix may be glued: #1YO-T0374_Broken branch
-    const treeRe = /#?\d*([A-Z]{2,6}\s*-\s*T\s*\d{3,5})\s*[_\-\s]+\s*([A-Za-z][A-Za-z0-9\s\/\-\.]{1,80}?)(?=\s*(?:#?\d*[A-Z]{2,6}\s*-\s*T\s*\d{3,5}|Photos\b|Audited\b|Referral\b|Location\b|Case\b|$))/gi;
+    // Prefix letters+optional digits; spaces around dash (pdf.js); #N may be glued
+    // Obs may start with & (combined trees) or a letter
+    const treeRe = /#?\d*([A-Z]{1,6}\d{0,2}\s*-\s*T\s*\d{3,5})\s*[_\-\s]+\s*(&?\s*[A-Za-z0-9][A-Za-z0-9\s\/_\-\.&]{0,80}?)(?=\s*(?:#?\d*[A-Z]{1,6}\d{0,2}\s*-\s*T\s*\d{3,5}|Photos\b|Audited\b|Referral\b|Location\b|Case\b|$))/gi;
     let m;
     while ((m = treeRe.exec(block)) !== null) {
         const treeId = normalizeTreeId(m[1]);
         if (!isValidTreeId(treeId)) continue;
-        let obs = m[2].replace(/\s+/g, " ").trim();
-        obs = obs.replace(/\s*(Photos|Audited|Referral|Location|Case No).*$/i, "").trim();
-        if (obs.length >= 2 && !/^photo/i.test(obs)) {
+        const obs = normalizeObservation(treeId, m[2]);
+        if (obs.length >= 1 && !/^photo/i.test(obs)) {
             findings.push({ treeId, obs });
         }
     }
+
+    // Line-oriented fallback for stubborn layouts
+    if (findings.length === 0) {
+        const lineRe = /#\d*\s*([A-Z]{1,6}\d{0,2})\s*-\s*(T\s*\d{3,5})\s*[_\-\s]+\s*(.+?)(?=\s*#\d+|\s*Photos\b|\s*Audited\b|$)/gi;
+        while ((m = lineRe.exec(block)) !== null) {
+            const treeId = normalizeTreeId(m[1] + "-" + m[2]);
+            if (!isValidTreeId(treeId)) continue;
+            const obs = normalizeObservation(treeId, m[3]);
+            if (obs.length >= 1 && !/^photo/i.test(obs)) findings.push({ treeId, obs });
+        }
+    }
+
+    const looksLikeTreeFindings = /#\s*\d/.test(block)
+        || /[A-Z]{1,6}\d{0,2}\s*-\s*T\s*\d{3,5}\s*[_\-]/.test(block);
 
     if (findings.length > 0) {
         const seen = new Set();
@@ -304,6 +343,9 @@ function extractFindings(text) {
         }
         return unique;
     }
+
+    // NEVER dump multi #N / tree-id findings as one prose Observation
+    if (looksLikeTreeFindings) return [];
 
     // Prose Findings (no tree ids in block) — keep whole string, pair with Tree Information ids
     let prose = block.replace(/[\u0000-\u001f\u0085\u2028\u2029]/g, " ").replace(/\s+/g, " ").trim();
@@ -344,9 +386,6 @@ function isTreeRemovalForm(text) {
         || /Reason\s+for\s+tree\s+removal/i.test(text);
 }
 
-function escapeRegExp(s) {
-    return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
 
 function matchKnownPhrase(text, phrases) {
     const flat = text.replace(/\s+/g, " ");
@@ -398,7 +437,7 @@ function extractEstateNear(text, index) {
     const start = Math.max(0, index - 120);
     const window = text.slice(start, index + 40).replace(/\s+/g, " ");
     for (const name of KNOWN_PLACES) {
-        const re = new RegExp("\\b" + name.replace(/ /g, "\\s+") + "(?:\\s+(Estate|Court))?\\b", "i");
+        const re = new RegExp("\\b" + escapeRegExp(name).replace(/ /g, "\\s+") + "(?:\\s+(Estate|Court))?\\b", "i");
         if (re.test(window)) return normalizePlace(name);
     }
     const ec = window.match(/([A-Za-z][A-Za-z0-9]*(?:\s+[A-Za-z0-9.()]+){0,3})\s+(Estate|Court)\b/i);
