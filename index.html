@@ -135,14 +135,14 @@ async function handleFiles(files) {
             const content1 = await page1.getTextContent();
             const page1Text = content1.items.map(item => item.str).join(' ');
             fullText += page1Text + '\n';
-            const removalForm = /Tree\s+Removal\s+under\s+Arboricultural\s+Maintenance|Reason\s+for\s+tree\s+removal/i.test(page1Text);
-            const pagesToRead = Math.min(pdf.numPages, removalForm ? 5 : 2);
+            // Agreement-header PDFs continue Findings/#N across many pages
+            const pagesToRead = pdf.numPages < 15 ? pdf.numPages : Math.min(pdf.numPages, 10);
             for (let i = 2; i <= pagesToRead; i++) {
                 const page = await pdf.getPage(i);
                 const content = await page.getTextContent();
                 fullText += content.items.map(item => item.str).join(' ') + '\n';
             }
-            const rows = parseReport(fullText, file.name);
+            const rows = parseReport(normalizePdfText(fullText), file.name);
             allRows.push(...rows);
             setStatus(`已處理：${file.name}（擷取到 ${rows.length} 筆樹資料）`, 'success');
         } catch (err) {
@@ -157,10 +157,10 @@ async function handleFiles(files) {
 const KNOWN_PLACES = [
     "Kam Fung Court", "Mei Lam Estate", "Mei Tin Estate", "Sun Chui Estate", "Yan On Estate", "Yan Tin Estate",
     "Tin Yiu (2) Estate", "Tin Yiu (1) Estate", "Tin Shui (1) Estate", "Tin Shui (2) Estate",
-    "Hoi Tai Factory Estate", "Butterfly Estate", "Kin Sang Estate",
+    "Hoi Tai Factory Estate", "Butterfly Estate", "Kin Sang Estate", "Shek Mun Estate",
     "Chung On Estate", "Fung Wo Estate", "Lee On Estate", "Lung Hang Estate", "Lek Yuen Estate", "Ching Ho Estate",
     "Yau Oi Estate", "Tai Hing Estate", "On Ting Estate", "Fu Tai Estate", "Shui Pin Wai Estate",
-    "Kam Fung", "Mei Lam", "Mei Tin", "Sun Chui", "Yan Tin", "Yan On", "Tin Yiu", "Tin Shui", "Hoi Tai Factory", "Butterfly", "Kin Sang",
+    "Kam Fung", "Mei Lam", "Mei Tin", "Sun Chui", "Yan Tin", "Yan On", "Tin Yiu", "Tin Shui", "Hoi Tai Factory", "Butterfly", "Kin Sang", "Shek Mun",
     "Chung On", "Fung Wo", "Lee On", "Lung Hang", "Lek Yuen", "Ching Ho", "Yau Oi", "Tai Hing", "On Ting", "Fu Tai", "Shui Pin Wai"
 ];
 
@@ -186,7 +186,8 @@ const FILENAME_PLACE = [
     [/TS2|Tin\s*Shui\s*\(2\)/i, "Tin Shui (2) Estate"],
     [/FHT|Hoi\s*Tai/i, "Hoi Tai Factory Estate"],
     [/\bBE\b|Butterfly/i, "Butterfly Estate"],
-    [/KSG|Kin\s*Sang/i, "Kin Sang Estate"]
+    [/KSG|Kin\s*Sang/i, "Kin Sang Estate"],
+    [/\bSM\b|Shek\s*Mun/i, "Shek Mun Estate"]
 ];
 
 function escapeRegExp(s) {
@@ -223,6 +224,26 @@ function normalizePlace(raw) {
     return s.split(/\s+/).slice(0, 5).join(" ");
 }
 
+function normalizePdfText(text) {
+    let t = String(text || "");
+    // Compact spaced tree ids: "S M - T0 209" / "T N Y 2 - T0 414" / "H K F U - T 0005"
+    t = t.replace(/\b([A-Z](?:\s*[A-Z0-9]){1,7})\s*-\s*([A-Za-z])\s*(\d(?:\s*\d){2,4})\b/g, (_, a, b, c) => {
+        return a.replace(/\s+/g, "") + "-" + b.replace(/\s+/g, "").toUpperCase() + c.replace(/\s+/g, "");
+    });
+    // Also PREFIX_T1234 with underscore used as dash
+    t = t.replace(/\b([A-Z]{1,6}\d{0,2})\s*[_\-]\s*([A-Za-z])\s*(\d{3,5})\b/g, "$1-$2$3");
+    return t;
+}
+
+function fixObservationSpacing(obs) {
+    let o = String(obs || "");
+    // "H anger" → "Hanger", "D ead" → "Dead" (letter + space + lowercase rest)
+    o = o.replace(/\b([A-Z])\s+([a-z]{2,})\b/g, "$1$2");
+    // Collapse leftover single-letter splits: "A symmetric" already handled; multi-word ok
+    o = o.replace(/\s+/g, " ").trim();
+    return o;
+}
+
 function caseTokenFromText(text) {
     if (!text) return "";
     // No trailing \b — filenames often continue with _Estate_…
@@ -246,8 +267,9 @@ function extractCaseNo(text, filename) {
 }
 
 function extractAuditDate(text) {
-    // Date: 2026/07/07 with flexible spaces; never invent today here
-    const m = String(text || "").match(/\bDate\s*:\s*(\d{4})\s*[\/\-]\s*(\d{1,2})\s*[\/\-]\s*(\d{1,2})/i);
+    const src = String(text || "");
+    const afterTitle = src.match(/Audit\s+Report[\s\S]{0,2500}?\bDate\s*:\s*(\d{4})\s*[\/\-]\s*(\d{1,2})\s*[\/\-]\s*(\d{1,2})/i);
+    const m = afterTitle || src.match(/\bDate\s*:\s*(\d{4})\s*[\/\-]\s*(\d{1,2})\s*[\/\-]\s*(\d{1,2})/i);
     if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
     return "";
 }
@@ -293,15 +315,18 @@ function normalizeTreeId(raw) {
 }
 
 function isValidTreeId(id) {
-    // LEO-A0001, HKFU-T0005, TNY2-T0171, BE-T0307
-    return /^[A-Z]{1,6}\d{0,2}-[A-Z]\d{3,5}$/.test(id);
+    // LEO-A0001, HKFU-T0005, TNY2-T0171, BE-T0307, SM-T0209
+    if (/^[A-Z]{1,6}\d{0,2}-[A-Z]\d{3,5}$/.test(id)) return true;
+    // Odd short tokens e.g. UN1
+    if (/^UN\d{1,3}$/i.test(id)) return true;
+    return false;
 }
 
 function extractTreeInformationIds(text) {
     const ids = [];
     const seen = new Set();
     const section = text.match(/\bTree\b([\s\S]*?)(?=\s*Location\s*:|\s*Findings\s*:|\s*Photos\b|\s*Audited\b|\s*Agreement\s+No\.|$)/i);
-    if (!section || !/Information/i.test(section[1].slice(0, 120))) return ids;
+    if (!section || !/Information/i.test(section[1].slice(0, 160))) return ids;
     const re = /([A-Z]{1,6}\d{0,2}\s*-\s*[A-Z]\s*\d{3,5})/gi;
     let m;
     while ((m = re.exec(section[1])) !== null) {
@@ -315,9 +340,13 @@ function extractTreeInformationIds(text) {
 }
 
 function normalizeObservation(treeId, obs) {
-    let o = String(obs || "").replace(/_/g, " ").replace(/\s+/g, " ").trim();
-    o = o.replace(/\s*(Agreement\s+No\.|Provision\s+of\s+arboricultural|AS\s+Contractor|Contract\s+No\.|Audited\s+by|Photos\b|Referral\b|Location\b|Case\s*No).*$/i, "").trim();
-    // #4TNY1-T0327_& T0329_Dead fronds → "T0327 & T0329 Dead fronds"
+    let o = String(obs || "").replace(/_/g, " ");
+    o = fixObservationSpacing(o);
+    o = o.replace(/\s+/g, " ").trim();
+    // Stop before leftover #N / next tree id / boilerplate
+    o = o.replace(/\s*#\d+.*$/i, "").trim();
+    o = o.replace(/\s+(?:[A-Z]{1,6}\d{0,2}-[A-Z]\d{3,5})\b.*$/i, "").trim();
+    o = o.replace(/\s*(Agreement\s+No\.|Provision\s+of\s+arboricultural|AS\s+Contractor|Contract\s+No\.|Audited\s+by|Photos\b|Referral\b|Location\b|Case\s*No|Date\s*:).*$/i, "").trim();
     if (/^&\s*/.test(o)) {
         const shortId = treeId.match(/-([A-Z]\d{3,5})$/i);
         if (shortId) o = (shortId[1] + " " + o).replace(/\s+/g, " ").trim();
@@ -325,36 +354,59 @@ function normalizeObservation(treeId, obs) {
     return o;
 }
 
-function extractFindings(text) {
-    // Stop at Photos / Audited / Agreement No. (page headers after form feed)
-    const fm = text.match(/Findings\s*:?\s*([\s\S]*?)(?=\s*Photos\b|\s*Audited\b|\s*Agreement\s+No\.|\s*Provision\s+of\s+arboricultural|$)/i);
-    const block = fm ? fm[1] : "";
-    const findings = [];
+function pushFinding(findings, treeId, obs) {
+    if (!isValidTreeId(treeId)) return;
+    const cleaned = normalizeObservation(treeId, obs);
+    if (cleaned.length < 1) return;
+    if (/^photo/i.test(cleaned) || /^agreement/i.test(cleaned)) return;
+    if (/#\d/.test(cleaned)) return;
+    if (/^(Information|Location|Findings|Referral|Estate|District|Photos|Audited|Signature|Contract|Tree|Case|From|To|Email|Inspection|Officer|Submitted)\b/i.test(cleaned)) return;
+    findings.push({ treeId, obs: cleaned });
+}
 
-    // Prefix+letter id (T or A…); spaces around dash; #N may be glued; obs may start with &
-    const treeRe = /#?\d*\s*([A-Z]{1,6}\d{0,2}\s*-\s*[A-Z]\s*\d{3,5})\s*[_\-\s]+\s*(&?\s*[A-Za-z0-9][A-Za-z0-9\s\/_\-\.&]{0,80}?)(?=\s*(?:#?\d*\s*[A-Z]{1,6}\d{0,2}\s*-\s*[A-Z]\s*\d{3,5}|Photos\b|Audited\b|Agreement\s+No\.|Provision\s+of\s+arboricultural|Referral\b|Location\b|Case\b|$))/gi;
+function extractFindingsFromChunk(chunk, findings) {
+    // Standard PREFIX-X####_obs ; optional #N; spaces around _ allowed
+    const treeRe = /#?\d*\s*([A-Z]{1,6}\d{0,2}\s*-\s*[A-Z]\s*\d{3,5})\s*[_:=\-\s]+\s*(&?\s*[A-Za-z0-9][A-Za-z0-9\s\/_\-\.&]{0,100}?)(?=\s*(?:#\s*\d+|#?\d*\s*[A-Z]{1,6}\d{0,2}\s*-\s*[A-Z]\s*\d{3,5}|Photos\b|Audited\b|Agreement\s+No\.|Provision\s+of\s+arboricultural|Referral\b|Location\b|Case\b|Date\s*:|Estate\/|Estate\b|$))/gi;
     let m;
-    while ((m = treeRe.exec(block)) !== null) {
-        const treeId = normalizeTreeId(m[1]);
-        if (!isValidTreeId(treeId)) continue;
-        const obs = normalizeObservation(treeId, m[2]);
-        if (obs.length >= 1 && !/^photo/i.test(obs) && !/^agreement/i.test(obs)) {
-            findings.push({ treeId, obs });
-        }
+    while ((m = treeRe.exec(chunk)) !== null) {
+        pushFinding(findings, normalizeTreeId(m[1]), m[2]);
     }
-
-    if (findings.length === 0) {
-        const lineRe = /#\d*\s*([A-Z]{1,6}\d{0,2})\s*[-_]\s*([A-Z]\s*\d{3,5})\s*[_\-\s]+\s*(.+?)(?=\s*#\d+|\s*Photos\b|\s*Audited\b|\s*Agreement\s+No\.|$)/gi;
-        while ((m = lineRe.exec(block)) !== null) {
-            const treeId = normalizeTreeId(m[1] + "-" + m[2]);
-            if (!isValidTreeId(treeId)) continue;
-            const obs = normalizeObservation(treeId, m[3]);
-            if (obs.length >= 1 && !/^photo/i.test(obs) && !/^agreement/i.test(obs)) findings.push({ treeId, obs });
-        }
+    // Odd: #8 UN1 Dead tree
+    const oddRe = /#\s*\d+\s+(UN\d{1,3})\s+([A-Za-z][A-Za-z0-9\s\/\-]{1,60}?)(?=\s*(?:#\s*\d+|Photos\b|Audited\b|Agreement\s+No\.|$))/gi;
+    while ((m = oddRe.exec(chunk)) !== null) {
+        pushFinding(findings, normalizeTreeId(m[1]), m[2]);
     }
+    // Split-based: PREFIX-X####_obs (require _ or similar before observation words)
+    const idRe = /([A-Z]{1,6}\d{0,2}-[A-Z]\d{3,5})(?=\s*[_:\-])/g;
+    const ids = [];
+    let im;
+    while ((im = idRe.exec(chunk)) !== null) ids.push({ id: im[1], index: im.index, end: im.index + im[0].length });
+    for (let i = 0; i < ids.length; i++) {
+        const start = ids[i].end;
+        const stop = i + 1 < ids.length ? ids[i + 1].index : Math.min(chunk.length, start + 120);
+        let raw = chunk.slice(start, stop);
+        if (!/^\s*[_:\-\s]/.test(raw)) continue;
+        raw = raw.replace(/^\s*[_:\-=\s]+\s*/, "");
+        if (/^[A-Za-z&]/.test(raw.trim())) pushFinding(findings, ids[i].id, raw);
+    }
+}
 
-    const looksLikeTreeFindings = /#\s*\d/.test(block)
-        || /[A-Z]{1,6}\d{0,2}\s*-\s*[A-Z]\s*\d{3,5}\s*[_\-]/.test(block);
+function extractFindings(text) {
+    const findings = [];
+    // Primary Findings: … block (may end at Agreement page header)
+    const fm = text.match(/Findings\s*:?\s*([\s\S]*?)(?=\s*Photos\b|\s*Audited\b|\s*Agreement\s+No\.|\s*Provision\s+of\s+arboricultural|$)/i);
+    if (fm) extractFindingsFromChunk(fm[1], findings);
+
+    // Also scan FULL text for #N lines (continued after page breaks)
+    // #N finding lines across page breaks (not Photos# captions alone)
+    const hashChunks = text.match(/#\s*\d+\s+(?:[A-Z]{1,6}\d{0,2}\s*-\s*[A-Z]\s*\d{3,5}|UN\d{1,3})[\s\S]{0,120}?(?=\s*#\s*\d+|\s*Photos\b|\s*Audited\b|\s*Agreement\s+No\.|\s*Provision\s+of\s+arboricultural|$)/gi);
+    if (hashChunks) {
+        for (const ch of hashChunks) extractFindingsFromChunk(ch, findings);
+    }
+    // Only inspect Findings block — Photos#1 must not block prose findings
+    const findingsProbe = fm ? fm[1] : "";
+    const looksLikeTreeFindings = /#\s*\d/.test(findingsProbe)
+        || /[A-Z]{1,6}\d{0,2}\s*-\s*[A-Z]\s*\d{3,5}\s*[_\-]/.test(findingsProbe);
 
     if (findings.length > 0) {
         const seen = new Set();
@@ -369,8 +421,9 @@ function extractFindings(text) {
 
     if (looksLikeTreeFindings) return [];
 
-    let prose = block.replace(/[\u0000-\u001f\u0085\u2028\u2029]/g, " ").replace(/\s+/g, " ").trim();
-    prose = prose.replace(/\s*(Agreement\s+No\.|Provision\s+of\s+arboricultural|AS\s+Contractor|Contract\s+No\.|Audited\s+by|Photos\b).*$/i, "").trim();
+    let prose = (fm ? fm[1] : "").replace(/[\u0000-\u001f\u0085\u2028\u2029]/g, " ").replace(/\s+/g, " ").trim();
+    prose = fixObservationSpacing(prose);
+    prose = prose.replace(/\s*(Agreement\s+No\.|Provision\s+of\s+arboricultural|AS\s+Contractor|Contract\s+No\.|Audited\s+by|Photos\b|#\s*\d+).*$/i, "").trim();
     if (prose.length >= 2) {
         const treeIds = extractTreeInformationIds(text);
         if (treeIds.length > 0) {
