@@ -56,7 +56,8 @@
         2. 用 Chrome / Edge / Firefox 開啟即可使用，無需安裝任何程式<br>
         3. 需要網路連線（載入 PDF 解析功能）<br>
         4. 支援一次拖入多份報告（Chung On、Fung Wo、Kam Fung、Lee On、Lung Hang、Lek Yuen、Yau Oi、Tai Hing 等）<br>
-        5. 亦可下載本頁的 HTML 檔案離線分享（Email、Teams、共用資料夾）
+        5. 亦支援 <strong>Tree Removal under Arboricultural Maintenance</strong> 表格（Reason for tree removal → Observation）<br>
+        6. 亦可下載本頁的 HTML 檔案離線分享（Email、Teams、共用資料夾）
     </div>
 
     <div class="drop-zone" id="dropZone">
@@ -93,7 +94,13 @@ const headers = [
     "Mitigation", "Inspection Date", "Date informed EMO upon inspection",
     "Case deadline (normal case)", "TS no action", "TS Mitigation work",
     "Works Completion Date", "Date informed EMO upon works completion",
-    "Confirmed date", "Confirmed by", "Remarks", "TS Action"
+    "Confirmed date", "Confirmed by", "Remarks", "TS Action",
+    "Compensatory / Replacement planting (Yes / No)",
+    "Reason for No Replacement planting (if applicable)",
+    "Anticipated date of Tree Removal",
+    "Anticipated date of Compensatory Planting",
+    "Actual date of Compensatory Planting",
+    "Remarks (if any)"
 ];
 
 const dropZone = document.getElementById('dropZone');
@@ -123,8 +130,14 @@ async function handleFiles(files) {
             const arrayBuffer = await file.arrayBuffer();
             const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
             let fullText = '';
-            const pagesToRead = Math.min(pdf.numPages, 2);
-            for (let i = 1; i <= pagesToRead; i++) {
+            // Peek page 1 to decide page budget (Tree Removal forms can span more pages)
+            const page1 = await pdf.getPage(1);
+            const content1 = await page1.getTextContent();
+            const page1Text = content1.items.map(item => item.str).join(' ');
+            fullText += page1Text + '\n';
+            const removalForm = /Tree\s+Removal\s+under\s+Arboricultural\s+Maintenance|Reason\s+for\s+tree\s+removal/i.test(page1Text);
+            const pagesToRead = Math.min(pdf.numPages, removalForm ? 5 : 2);
+            for (let i = 2; i <= pagesToRead; i++) {
                 const page = await pdf.getPage(i);
                 const content = await page.getTextContent();
                 fullText += content.items.map(item => item.str).join(' ') + '\n';
@@ -143,10 +156,10 @@ async function handleFiles(files) {
 
 const KNOWN_PLACES = [
     "Kam Fung Court", "Mei Lam Estate", "Mei Tin Estate", "Sun Chui Estate", "Yan On Estate", "Yan Tin Estate",
-    "Chung On Estate", "Fung Wo Estate", "Lee On Estate", "Lung Hang Estate", "Lek Yuen Estate",
+    "Chung On Estate", "Fung Wo Estate", "Lee On Estate", "Lung Hang Estate", "Lek Yuen Estate", "Ching Ho Estate",
     "Yau Oi Estate", "Tai Hing Estate", "On Ting Estate", "Fu Tai Estate", "Shui Pin Wai Estate",
     "Kam Fung", "Mei Lam", "Mei Tin", "Sun Chui", "Yan Tin", "Yan On", "Chung On", "Fung Wo", "Lee On",
-    "Lung Hang", "Lek Yuen", "Yau Oi", "Tai Hing", "On Ting", "Fu Tai", "Shui Pin Wai"
+    "Lung Hang", "Lek Yuen", "Ching Ho", "Yau Oi", "Tai Hing", "On Ting", "Fu Tai", "Shui Pin Wai"
 ];
 
 const FILENAME_PLACE = [
@@ -157,6 +170,8 @@ const FILENAME_PLACE = [
     [/LH|Lung\s*Hang/i, "Lung Hang Estate"],
     [/LY|Lek\s*Yuen/i, "Lek Yuen Estate"],
     [/YNT|Yan\s*Tin/i, "Yan Tin Estate"],
+    [/CHH|Ching\s*Ho/i, "Ching Ho Estate"],
+    [/\bML\b|Mei\s*Lam/i, "Mei Lam Estate"],
     [/YO|Yau\s*Oi/i, "Yau Oi Estate"],
     [/TH|Tai\s*Hing/i, "Tai Hing Estate"],
     [/Mei\s*Lam/i, "Mei Lam Estate"],
@@ -302,7 +317,220 @@ function extractFindings(text) {
     return [];
 }
 
+const TREE_REMOVAL_REASONS = [
+    'Tree classified as "Black" under the Triage System in the TRAM Guidelines',
+    'Dead tree (except for dead trees of particular interest)',
+    'Tree removal for the purpose of woodland management',
+    'Removal of common undesirable species',
+    'Imminent danger'
+].slice().sort((a, b) => b.length - a.length);
+
+const NO_REPLACEMENT_REASONS = [
+    'Leave growing space for existing trees nearby',
+    'Very close to building / road signage / traffic road',
+    'Steep slope (over 35 degrees)',
+    'Steep slope',
+    'Undesirable species',
+    'Presence of BRRD',
+    'Restricted Planter',
+    'Rocky base slope'
+].slice().sort((a, b) => b.length - a.length);
+
+const EMPTY_MID = ["", "", "", "", "", "", "", "", "", "", "", ""]; // Mitigation .. TS Action
+const EMPTY_REMOVAL_EXTRA = ["", "", "", "", "", ""];
+
+function isTreeRemovalForm(text) {
+    return /Tree\s+Removal\s+under\s+Arboricultural\s+Maintenance/i.test(text)
+        || /Reason\s+for\s+tree\s+removal/i.test(text);
+}
+
+function escapeRegExp(s) {
+    return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function matchKnownPhrase(text, phrases) {
+    const flat = text.replace(/\s+/g, " ");
+    for (const phrase of phrases) {
+        const flex = phrase.split(/\s+/).map(escapeRegExp).join("\\s+");
+        if (new RegExp(flex, "i").test(flat)) return phrase;
+    }
+    // pdf.js table text may interleave other cells inside a wrapped phrase
+    for (const phrase of phrases) {
+        const parts = phrase.split(/\s+/).map(escapeRegExp);
+        const loose = parts.join("[\\s\\S]{0,800}?");
+        if (new RegExp(loose, "i").test(text)) return phrase;
+    }
+    return "";
+}
+
+function findRemovalReason(text) {
+    return matchKnownPhrase(text, TREE_REMOVAL_REASONS);
+}
+
+function findNoReplacementReason(text) {
+    return matchKnownPhrase(text, NO_REPLACEMENT_REASONS);
+}
+
+function parseDMYToISO(s) {
+    const m = String(s).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!m) return String(s).trim();
+    return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+}
+
+function extractRemovalCaseNo(text, filename) {
+    const m = text.match(/\b(TNS-[A-Z0-9]+(?:-[A-Z0-9]+)*-\d{4}-\d{3})\b/i);
+    if (m) return m[1].toUpperCase();
+    const m2 = text.match(/\b([A-Z]{2,4}-[A-Z0-9]+(?:-[A-Z0-9]+)*-\d{4}-\d{3})\b/i);
+    if (m2 && !/^AS-/i.test(m2[1])) return m2[1].toUpperCase();
+    return (filename || "").replace(/\.pdf$/i, "");
+}
+
+function extractRemovalDate(text) {
+    const near = text.match(/Submitted\s+by\s*:[\s\S]{0,300}?Date\s*:\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/i);
+    const m = near || text.match(/\bDate\s*:\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/i);
+    if (m) {
+        return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+    }
+    return new Date().toISOString().slice(0, 10);
+}
+
+function extractEstateNear(text, index) {
+    const start = Math.max(0, index - 120);
+    const window = text.slice(start, index + 40).replace(/\s+/g, " ");
+    for (const name of KNOWN_PLACES) {
+        const re = new RegExp("\\b" + name.replace(/ /g, "\\s+") + "(?:\\s+(Estate|Court))?\\b", "i");
+        if (re.test(window)) return normalizePlace(name);
+    }
+    const ec = window.match(/([A-Za-z][A-Za-z0-9]*(?:\s+[A-Za-z0-9.()]+){0,3})\s+(Estate|Court)\b/i);
+    if (ec) return normalizePlace(ec[1] + " " + ec[2]);
+    return "";
+}
+
+function extractRemovalExtras(slice, fullText) {
+    let planting = "";
+    const yn = slice.match(/\b(Yes|No)\b/i);
+    if (yn) planting = yn[1].charAt(0).toUpperCase() + yn[1].slice(1).toLowerCase();
+
+    const noReplaceReason = findNoReplacementReason(slice) || findNoReplacementReason(fullText);
+
+    const afterYn = yn ? slice.slice(yn.index + yn[0].length) : slice;
+    const datesAfter = [...afterYn.matchAll(/\b(\d{1,2}\/\d{1,2}\/\d{4})\b/g)].map(x => x[1]);
+    // Exclude submitted Date: value if it appears in slice
+    const submitted = extractRemovalDate(fullText);
+    const filtered = datesAfter.filter(d => parseDMYToISO(d) !== submitted);
+
+    let antRemoval = filtered[0] ? parseDMYToISO(filtered[0]) : "";
+    let antComp = filtered[1] ? parseDMYToISO(filtered[1]) : "";
+    let actual = "";
+    if (/\bN\/A\b/i.test(afterYn)) actual = "N/A";
+    else if (filtered[2]) actual = parseDMYToISO(filtered[2]);
+
+    let remarks = "";
+    const rem = slice.match(/\b(TNS-[A-Z0-9]+(?:-[A-Z0-9]+)*-\d{4}-\d{3})\b/i)
+        || fullText.match(/\b(TNS-[A-Z0-9]+(?:-[A-Z0-9]+)*-\d{4}-\d{3})\b/i)
+        || slice.match(/\b([A-Z]{2,4}-[A-Z0-9]+(?:-[A-Z0-9]+)*-\d{4}-\d{3})\b/i);
+    if (rem) remarks = rem[1].toUpperCase();
+
+    return {
+        planting,
+        noReplaceReason,
+        antRemoval,
+        antComp,
+        actual,
+        remarks
+    };
+}
+
+function buildRemovalRow(estate, caseNo, dateReceived, treeId, obs, extras) {
+    const remarks = (extras && extras.remarks) || "";
+    const mid = ["", "", "", "", "", "", "", "", "", "", remarks, ""];
+    const extra = [
+        (extras && extras.planting) || "",
+        (extras && extras.noReplaceReason) || "",
+        (extras && extras.antRemoval) || "",
+        (extras && extras.antComp) || "",
+        (extras && extras.actual) || "",
+        remarks
+    ];
+    return [
+        "AS",
+        estate || "Unknown Estate",
+        caseNo,
+        dateReceived,
+        treeId || "",
+        obs || "",
+        ...mid,
+        ...extra
+    ];
+}
+
+function parseTreeRemovalForm(text, filename) {
+    const rows = [];
+    const caseNo = extractRemovalCaseNo(text, filename);
+    const dateReceived = extractRemovalDate(text);
+    const defaultReason = findRemovalReason(text);
+    const defaultEstate = extractEstate(text, filename || "");
+    const defaultExtras = extractRemovalExtras(text, text);
+
+    // Tree No. e.g. ML-T0419, CHH-T0551, SL1-T0231, SL1-A0048
+    const treeRe = /\b([A-Z]{1,6}\d{0,2}-[A-Z]\d{3,5})\b/g;
+    const seen = new Set();
+    const trees = [];
+    let m;
+    while ((m = treeRe.exec(text)) !== null) {
+        const id = m[1].toUpperCase();
+        if (seen.has(id)) continue;
+        if (/^TNS-/i.test(id)) continue;
+        seen.add(id);
+        trees.push({ id, index: m.index });
+    }
+
+    if (trees.length === 0) {
+        if (defaultReason || defaultEstate || caseNo) {
+            rows.push(buildRemovalRow(
+                defaultEstate || "Unknown Estate",
+                caseNo,
+                dateReceived,
+                "",
+                defaultReason || "(未能自動擷取 Reason for tree removal，請手動補充)",
+                defaultExtras
+            ));
+        }
+        return rows;
+    }
+
+    for (const t of trees) {
+        const estate = extractEstateNear(text, t.index) || defaultEstate || "Unknown Estate";
+        const next = trees.find(x => x.index > t.index);
+        const sliceEnd = next ? next.index : Math.min(text.length, t.index + 1200);
+        // Include some context before tree id (reason text may wrap above the row)
+        const sliceStart = Math.max(0, t.index - 200);
+        const slice = text.slice(sliceStart, sliceEnd);
+        let reason = findRemovalReason(slice) || defaultReason;
+        const extras = extractRemovalExtras(slice, text);
+        if (!extras.planting && defaultExtras.planting) extras.planting = defaultExtras.planting;
+        if (!extras.antRemoval && defaultExtras.antRemoval) extras.antRemoval = defaultExtras.antRemoval;
+        if (!extras.antComp && defaultExtras.antComp) extras.antComp = defaultExtras.antComp;
+        if (!extras.actual && defaultExtras.actual) extras.actual = defaultExtras.actual;
+        if (!extras.remarks && defaultExtras.remarks) extras.remarks = defaultExtras.remarks;
+        if (!extras.noReplaceReason && defaultExtras.noReplaceReason) extras.noReplaceReason = defaultExtras.noReplaceReason;
+        const rowCase = (extras.remarks && /^TNS-/i.test(extras.remarks)) ? extras.remarks : caseNo;
+        rows.push(buildRemovalRow(
+            estate,
+            rowCase,
+            dateReceived,
+            t.id,
+            reason || "(未能自動擷取 Reason for tree removal，請手動補充)",
+            extras
+        ));
+    }
+    return rows;
+}
+
 function parseReport(text, filename) {
+    if (isTreeRemovalForm(text)) {
+        return parseTreeRemovalForm(text, filename);
+    }
     const rows = [];
     const caseNo = extractCaseNo(text);
     const estate = extractEstate(text, filename || "");
@@ -321,7 +549,8 @@ function parseReport(text, filename) {
             dateReceived,
             f.treeId,
             f.obs,
-            "", "", "", "", "", "", "", "", "", "", "", ""
+            "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "", "", ""
         ]);
     }
 
@@ -333,7 +562,8 @@ function parseReport(text, filename) {
             dateReceived,
             "",
             "(未能自動擷取 Findings，請手動補充)",
-            "", "", "", "", "", "", "", "", "", "", "", ""
+            "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "", "", ""
         ]);
     }
 
