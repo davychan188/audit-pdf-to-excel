@@ -160,10 +160,23 @@ const KNOWN_PLACES = [
     "Hoi Tai Factory Estate", "Butterfly Estate", "Kin Sang Estate", "Shek Mun Estate",
     "Chung On Estate", "Fung Wo Estate", "Lee On Estate", "Lung Hang Estate", "Lek Yuen Estate", "Ching Ho Estate",
     "Yau Oi Estate", "Tai Yuen Estate", "Tai Hing Estate", "On Ting Estate", "Fu Tai Estate", "Shui Pin Wai Estate",
-    "Shui Chuen O Estate",
+    "Shui Chuen O Estate", "Ching Tin Estate", "Leung King Estate", "Lung Yat Estate", "Po Tin Estate",
+    "Sam Shing Estate", "Tin King Estate", "Wo Tin Estate", "Wu King Estate", "Hung Fuk Estate",
+    "Long Ching Estate", "Long Shin Estate", "Tin Chak Estate", "Tin Ching Estate", "Tin Heng Estate",
+    "Tin Tsz Estate", "Tin Wah Estate", "Tin Yan Estate", "Tin Yat Estate", "Tin Yuet Estate",
+    "San Wai Court", "Cheung Lung Wai Estate", "Cheung Wah Estate", "Choi Po Court", "Choi Yuen Estate",
+    "Fai Ming Estate", "Ka Fuk Estate", "Po Shek Wu Estate", "Tin Ping Estate", "Wah Sum Estate",
+    "Yung Shing Court", "Queens Hill Estate", "Chun Shek Estate", "Chun Yeung Estate", "Hin Yiu Estate",
+    "Pok Hong Estate", "Sha Kok Estate", "Sui Wo Court", "Sun Tin Wai Estate", "Wo Che Estate",
+    "Fu Heng Estate", "Fu Shin Estate", "Fu Tip Estate", "Kwong Fuk Estate", "Po Heung Estate",
+    "Tai Wo Estate", "Wan Tau Tong Estate",
     "Kam Fung", "Mei Lam", "Mei Tin", "Sun Chui", "Yan Tin", "Yan On", "Tin Yiu", "Tin Shui", "Hoi Tai Factory", "Butterfly", "Kin Sang", "Shek Mun",
     "Chung On", "Fung Wo", "Lee On", "Lung Hang", "Lek Yuen", "Ching Ho", "Yau Oi", "Tai Yuen", "Tai Hing", "On Ting", "Fu Tai", "Shui Pin Wai",
-    "Shui Chuen O"
+    "Shui Chuen O", "Ching Tin", "Leung King", "Lung Yat", "Po Tin", "Sam Shing", "Tin King", "Wo Tin", "Wu King",
+    "Hung Fuk", "Long Ching", "Long Shin", "Tin Chak", "Tin Ching", "Tin Heng", "Tin Tsz", "Tin Wah", "Tin Yan", "Tin Yat", "Tin Yuet",
+    "San Wai", "Cheung Lung Wai", "Cheung Wah", "Choi Po", "Choi Yuen", "Fai Ming", "Ka Fuk", "Po Shek Wu", "Tin Ping", "Wah Sum",
+    "Yung Shing", "Queens Hill", "Chun Shek", "Chun Yeung", "Hin Yiu", "Pok Hong", "Sha Kok", "Sui Wo", "Sun Tin Wai", "Wo Che",
+    "Fu Heng", "Fu Shin", "Fu Tip", "Kwong Fuk", "Po Heung", "Tai Wo", "Wan Tau Tong"
 ];
 
 const FILENAME_PLACE = [
@@ -193,6 +206,119 @@ const FILENAME_PLACE = [
     [/\bSM\b|Shek\s*Mun/i, "Shek Mun Estate"],
     [/Shui\s*Chuen\s*O/i, "Shui Chuen O Estate"]
 ];
+
+const TREE_PREFIX_ESTATE = {
+    "FHT": "Hoi Tai Factory Estate",
+    "BE": "Butterfly Estate",
+    "CTI": "Ching Tin Estate",
+    "FTA": "Fu Tai Estate",
+    "KSG": "Kin Sang Estate",
+    "LKG": "Leung King Estate",
+    "LKY": "Lung Yat Estate",
+    "OT": "On Ting Estate",
+    "POT": "Po Tin Estate",
+    "SS": "Sam Shing Estate",
+    "TH": "Tai Hing Estate",
+    "TK": "Tin King Estate",
+    "WOT": "Wo Tin Estate",
+    "WK": "Wu King Estate",
+    "YO": "Yau Oi Estate",
+    "YNT": "Yan Tin Estate",
+    "HFU": "Hung Fuk Estate",
+    "LCG": "Long Ching Estate",
+    "LSN": "Long Shin Estate",
+    "SPWA": "Shui Pin Wai Estate",
+    "TCK": "Tin Chak Estate",
+    "TCG": "Tin Ching Estate",
+    "TNH": "Tin Heng Estate",
+    "TS1": "Tin Shui (1) Estate",
+    "TS2": "Tin Shui (2) Estate",
+    "TTZ": "Tin Tsz Estate",
+    "TWA": "Tin Wah Estate",
+    "TIA": "Tin Yan Estate",
+    "TYA": "Tin Yat Estate",
+    "TNY1": "Tin Yiu (1) Estate",
+    "TNY2": "Tin Yiu (2) Estate",
+    "TYT": "Tin Yuet Estate",
+    "SWA": "San Wai Court",
+    "CLW": "Cheung Lung Wai Estate",
+    "CWA": "Cheung Wah Estate",
+    "CHH": "Ching Ho Estate",
+    "CP": "Choi Po Court",
+    "CY": "Choi Yuen Estate",
+    "FM": "Fai Ming Estate",
+    "KAF": "Ka Fuk Estate",
+    "PSW": "Po Shek Wu Estate",
+    "TPG": "Tin Ping Estate",
+    "WS": "Wah Sum Estate",
+    "YSG": "Yung Shing Court",
+    "QH": "Queens Hill Estate",
+    "CNS": "Chun Shek Estate",
+    "CNY": "Chun Yeung Estate",
+    "CHO": "Chung On Estate",
+    "FUW": "Fung Wo Estate",
+    "HO": "Heng On Estate",
+    "HYU": "Hin Yiu Estate",
+    "HKFU": "Kam Fung Court",
+    "LEO": "Lee On Estate",
+    "LY": "Lek Yuen Estate",
+    "LH": "Lung Hang Estate",
+    "ML": "Mei Lam Estate",
+    "MTI": "Mei Tin Estate",
+    "PH": "Pok Hong Estate",
+    "SK": "Sha Kok Estate",
+    "SM": "Shek Mun Estate",
+    "SCO": "Shui Chuen O Estate",
+    "HSW": "Sui Wo Court",
+    "SC": "Sun Chui Estate",
+    "STW": "Sun Tin Wai Estate",
+    "WC": "Wo Che Estate",
+    "YAO": "Yan On Estate",
+    "FH": "Fu Heng Estate",
+    "FSH": "Fu Shin Estate",
+    "FTP": "Fu Tip Estate",
+    "KFK": "Kwong Fuk Estate",
+    "POH": "Po Heung Estate",
+    "TWO": "Tai Wo Estate",
+    "TY": "Tai Yuen Estate",
+    "WTT": "Wan Tau Tong Estate"
+};
+
+function estateFromTreeId(treeId) {
+    if (!treeId) return "";
+    const prefix = String(treeId).toUpperCase().split("-")[0];
+    return TREE_PREFIX_ESTATE[prefix] || "";
+}
+
+function estateFromCaseNo(caseNo) {
+    if (!caseNo) return "";
+    const parts = String(caseNo).toUpperCase().split("-").filter(Boolean);
+    let best = "";
+    let bestLen = 0;
+    for (const p of parts) {
+        if (TREE_PREFIX_ESTATE[p] && p.length > bestLen) {
+            best = TREE_PREFIX_ESTATE[p];
+            bestLen = p.length;
+        }
+    }
+    return best;
+}
+
+function isWeakEstate(estate) {
+    if (!estate) return true;
+    const e = String(estate).trim();
+    if (!e || e.length < 3) return true;
+    if (/^Unknown\s+Estate$/i.test(e)) return true;
+    return false;
+}
+
+/** Prefer a real text-extracted estate; fall back to Tree ID prefix, then Case No. segment. */
+function resolveEstate(estate, treeId, caseNo) {
+    if (!isWeakEstate(estate)) return estate;
+    return estateFromTreeId(treeId) || estateFromCaseNo(caseNo) || estate || "";
+}
+
+
 
 function escapeRegExp(s) {
     return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -642,7 +768,7 @@ function parseTreeRemovalForm(text, filename) {
     if (trees.length === 0) {
         if (defaultReason || defaultEstate || caseNo) {
             rows.push(buildRemovalRow(
-                defaultEstate || "Unknown Estate",
+                resolveEstate(defaultEstate, "", caseNo) || "Unknown Estate",
                 caseNo,
                 dateReceived,
                 "",
@@ -654,7 +780,6 @@ function parseTreeRemovalForm(text, filename) {
     }
 
     for (const t of trees) {
-        const estate = extractEstateNear(text, t.index) || defaultEstate || "Unknown Estate";
         const next = trees.find(x => x.index > t.index);
         const sliceEnd = next ? next.index : Math.min(text.length, t.index + 1200);
         // Include some context before tree id (reason text may wrap above the row)
@@ -671,6 +796,7 @@ function parseTreeRemovalForm(text, filename) {
         if (!extras.remarks && defaultExtras.remarks) extras.remarks = defaultExtras.remarks;
         if (!extras.noReplaceReason && defaultExtras.noReplaceReason) extras.noReplaceReason = defaultExtras.noReplaceReason;
         const rowCase = (extras.remarks && /^TNS-/i.test(extras.remarks)) ? extras.remarks : caseNo;
+        const estate = resolveEstate(extractEstateNear(text, t.index) || defaultEstate, t.id, rowCase) || "Unknown Estate";
         rows.push(buildRemovalRow(
             estate,
             rowCase,
@@ -699,9 +825,10 @@ function parseReport(text, filename) {
     const caseOut = caseNo || caseFromFilename(filename) || "";
 
     for (const f of unique) {
+        const rowEstate = resolveEstate(estate, f.treeId, caseOut) || "Unknown Estate";
         rows.push([
             "AS",
-            estate || "Unknown Estate",
+            rowEstate,
             caseOut,
             dateReceived,
             f.treeId,
@@ -712,9 +839,10 @@ function parseReport(text, filename) {
     }
 
     if (rows.length === 0 && (caseOut || estate)) {
+        const rowEstate = resolveEstate(estate, "", caseOut) || "Unknown Estate";
         rows.push([
             "AS",
-            estate || "Unknown Estate",
+            rowEstate,
             caseOut,
             dateReceived,
             "",

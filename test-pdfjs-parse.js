@@ -109,4 +109,30 @@ assert(/2026\/07\/13/.test(n2), 'date normalize: ' + n2);
 const n3 = normalizePdfText('#1BE - T0307 _H anger');
 assert(/BE-T0307_Hanger/.test(n3.replace(/\s+/g, '')) || /BE-T0307\s*_Hanger/.test(n3) || n3.includes('Hanger'), 'hanger: ' + n3);
 
+
+// Tree-ID prefix → estate fallback (when text estate missing)
+(() => {
+  assert(estateFromTreeId('SCO-A0005') === 'Shui Chuen O Estate', 'prefix SCO');
+  assert(estateFromTreeId('HKFU-T0005') === 'Kam Fung Court', 'prefix HKFU');
+  assert(estateFromTreeId('TY-T0315') === 'Tai Yuen Estate', 'prefix TY');
+  assert(estateFromTreeId('SM-T0209') === 'Shek Mun Estate', 'prefix SM');
+  assert(estateFromTreeId('BE-T0307') === 'Butterfly Estate', 'prefix BE');
+  assert(estateFromTreeId('TS1-T0231') === 'Tin Shui (1) Estate', 'prefix TS1');
+  assert(estateFromCaseNo('TNS-SCO-2026-004') === 'Shui Chuen O Estate', 'case SCO');
+  assert(estateFromCaseNo('AS-TNS-HKFU-2026-007') === 'Kam Fung Court', 'case HKFU');
+  assert(resolveEstate('', 'SCO-A0005', '') === 'Shui Chuen O Estate', 'resolve tree');
+  assert(resolveEstate('Unknown Estate', '', 'TNS-SCO-2026-004') === 'Shui Chuen O Estate', 'resolve case');
+  assert(resolveEstate('Shek Mun Estate', 'SCO-A0005', '') === 'Shek Mun Estate', 'prefer real estate');
+  // Blank estate text + SCO tree → still Shui Chuen O via prefix
+  const blankEstate = parseReport(
+    normalizePdfText('Audit Report\\nDate: 2026/08/04\\nFindings:\\n#1 SCO-A0005 _Asymmetric crown'),
+    'blank-estate.pdf'
+  );
+  // If findings path yields a row, estate must come from prefix
+  if (blankEstate.length) {
+    assert(blankEstate.every(r => r[1] === 'Shui Chuen O Estate'), 'blank estate audit: ' + (blankEstate[0] && blankEstate[0][1]));
+  }
+  console.log('tree-prefix-fallback PASS');
+})();
+
 console.log('ALL PDFJS TESTS PASSED');
