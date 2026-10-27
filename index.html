@@ -275,11 +275,25 @@ function extractCaseNo(text, filename) {
     return caseFromFilename(filename);
 }
 
+function todayDMY() {
+    const d = new Date();
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const yyyy = d.getFullYear();
+    return `${dd}/${mm}/${yyyy}`;
+}
+
+function normalizeDMY(s) {
+    const m = String(s).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!m) return String(s).trim();
+    return `${m[1].padStart(2, "0")}/${m[2].padStart(2, "0")}/${m[3]}`;
+}
+
 function extractAuditDate(text) {
     const src = String(text || "");
     const afterTitle = src.match(/Audit\s+Report[\s\S]{0,2500}?\bDate\s*:\s*(\d{4})\s*[\/\-]\s*(\d{1,2})\s*[\/\-]\s*(\d{1,2})/i);
     const m = afterTitle || src.match(/\bDate\s*:\s*(\d{4})\s*[\/\-]\s*(\d{1,2})\s*[\/\-]\s*(\d{1,2})/i);
-    if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+    if (m) return `${m[3].padStart(2, "0")}/${m[2].padStart(2, "0")}/${m[1]}`;
     return "";
 }
 
@@ -494,12 +508,6 @@ function findNoReplacementReason(text) {
     return matchKnownPhrase(text, NO_REPLACEMENT_REASONS);
 }
 
-function parseDMYToISO(s) {
-    const m = String(s).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-    if (!m) return String(s).trim();
-    return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
-}
-
 function extractRemovalCaseNo(text, filename) {
     const fromText = caseTokenFromText(text);
     if (fromText) return fromText;
@@ -512,9 +520,9 @@ function extractRemovalDate(text) {
     const near = text.match(/Submitted\s+by\s*:[\s\S]{0,300}?Date\s*:\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/i);
     const m = near || text.match(/\bDate\s*:\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/i);
     if (m) {
-        return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+        return `${m[1].padStart(2, "0")}/${m[2].padStart(2, "0")}/${m[3]}`;
     }
-    return new Date().toISOString().slice(0, 10);
+    return todayDMY();
 }
 
 function extractEstateNear(text, index) {
@@ -540,13 +548,13 @@ function extractRemovalExtras(slice, fullText) {
     const datesAfter = [...afterYn.matchAll(/\b(\d{1,2}\/\d{1,2}\/\d{4})\b/g)].map(x => x[1]);
     // Exclude submitted Date: value if it appears in slice
     const submitted = extractRemovalDate(fullText);
-    const filtered = datesAfter.filter(d => parseDMYToISO(d) !== submitted);
+    const filtered = datesAfter.filter(d => normalizeDMY(d) !== submitted);
 
-    let antRemoval = filtered[0] ? parseDMYToISO(filtered[0]) : "";
-    let antComp = filtered[1] ? parseDMYToISO(filtered[1]) : "";
+    let antRemoval = filtered[0] ? normalizeDMY(filtered[0]) : "";
+    let antComp = filtered[1] ? normalizeDMY(filtered[1]) : "";
     let actual = "";
     if (/\bN\/A\b/i.test(afterYn)) actual = "N/A";
-    else if (filtered[2]) actual = parseDMYToISO(filtered[2]);
+    else if (filtered[2]) actual = normalizeDMY(filtered[2]);
 
     let remarks = "";
     const rem = slice.match(/\b(TNS-[A-Z0-9]+(?:-[A-Z0-9]+)*-\d{4}-\d{3})\b/i)
@@ -660,7 +668,7 @@ function parseReport(text, filename) {
     const estate = extractEstate(text, filename || "");
 
     let dateReceived = extractAuditDate(text);
-    if (!dateReceived) dateReceived = new Date().toISOString().slice(0, 10);
+    if (!dateReceived) dateReceived = todayDMY();
 
     const unique = extractFindings(text);
     const caseOut = caseNo || caseFromFilename(filename) || "";

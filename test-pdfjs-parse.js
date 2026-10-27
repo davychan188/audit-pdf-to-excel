@@ -37,7 +37,7 @@ check('shekmun-pdfjs', path.join(samples3, 'shekmun-pdfjs.txt'), {
   n: 3,
   caseNo: 'AS-TNS-SM-2026-006',
   estate: 'Shek Mun Estate',
-  date: '2026-08-04',
+  date: '04/08/2026',
   trees: ['SM-T0209', 'SM-T0212', 'SM-T0319'],
   obs: ['Asymmetric crown', 'Asymmetric crown', 'Asymmetric crown']
 });
@@ -45,7 +45,7 @@ check('butterfly-pdfjs', path.join(samples3, 'butterfly-pdfjs.txt'), {
   n: 1,
   caseNo: 'AS-TY-BE-2026-005',
   estate: 'Butterfly Estate',
-  date: '2026-07-13',
+  date: '13/07/2026',
   trees: ['BE-T0307'],
   obs: ['Hanger']
 });
