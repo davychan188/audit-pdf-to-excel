@@ -4,10 +4,10 @@ const path = require('path');
 
 const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
-const hm = script.match(/const headers = \[[\s\S]*?\];/);
+const hm = script.match(/const HEADERS_TNS = \[[\s\S]*?\];[\s\S]*?const HEADERS_REMOVAL = \[[\s\S]*?\];[\s\S]*?const headers = HEADERS_TNS;/);
 const pm = script.match(/const KNOWN_PLACES[\s\S]*?function parseReport\(text, filename\) \{[\s\S]*?\n\}/);
 if (!hm || !pm) {
-  console.error('Failed to extract parser from index.html');
+  console.error('Failed to extract parser from index.html', !!hm, !!pm);
   process.exit(1);
 }
 eval((hm[0] + '\n' + pm[0]).replace(/\bconst /g, 'var '));
@@ -19,22 +19,31 @@ function assert(cond, msg) {
   }
 }
 
+function cells(row) {
+  return row.cells || row;
+}
+
 function check(lab, file, exp) {
   const text = fs.readFileSync(file, 'utf8');
   const rows = parseReport(text, path.basename(file) + '.pdf');
-  console.log(lab, rows.map(r => ({ case: r[2], estate: r[1], date: r[3], tree: r[4], obs: r[5] })));
+  const c = rows.map(r => cells(r));
+  console.log(lab, c.map(r => ({ kind: (rows[0] && rows[0].kind) || '?', case: r[2], estate: r[1], date: r[3], tree: r[4], obs: r[5] })));
   assert(rows.length === exp.n, `${lab}: expected ${exp.n} rows, got ${rows.length}`);
-  assert(rows.every(r => r[1] === exp.estate), `${lab}: estate ${rows[0] && rows[0][1]}`);
-  assert(rows.every(r => r[2] === exp.caseNo), `${lab}: case ${rows[0] && rows[0][2]}`);
-  assert(rows.every(r => r[3] === exp.date), `${lab}: date ${rows[0] && rows[0][3]}`);
-  assert(rows.map(r => r[4]).join(',') === exp.trees.join(','), `${lab}: trees ${rows.map(r => r[4])}`);
-  assert(rows.map(r => r[5]).join('|') === exp.obs.join('|'), `${lab}: obs ${rows.map(r => r[5]).join('|')}`);
+  if (exp.kind) {
+    assert(rows.every(r => r.kind === exp.kind), `${lab}: kind ${rows[0] && rows[0].kind}`);
+  }
+  assert(c.every(r => r[1] === exp.estate), `${lab}: estate ${c[0] && c[0][1]}`);
+  assert(c.every(r => r[2] === exp.caseNo), `${lab}: case ${c[0] && c[0][2]}`);
+  assert(c.every(r => r[3] === exp.date), `${lab}: date ${c[0] && c[0][3]}`);
+  assert(c.map(r => r[4]).join(',') === exp.trees.join(','), `${lab}: trees ${c.map(r => r[4])}`);
+  assert(c.map(r => r[5]).join('|') === exp.obs.join('|'), `${lab}: obs ${c.map(r => r[5]).join('|')}`);
   console.log(lab, 'PASS');
 }
 
 const samples3 = '/workspace/audit-samples3';
 check('shekmun-pdfjs', path.join(samples3, 'shekmun-pdfjs.txt'), {
   n: 3,
+  kind: 'audit',
   caseNo: 'AS-TNS-SM-2026-006',
   estate: 'Shek Mun Estate',
   date: '04/08/2026',
@@ -43,6 +52,7 @@ check('shekmun-pdfjs', path.join(samples3, 'shekmun-pdfjs.txt'), {
 });
 check('butterfly-pdfjs', path.join(samples3, 'butterfly-pdfjs.txt'), {
   n: 1,
+  kind: 'audit',
   caseNo: 'AS-TY-BE-2026-005',
   estate: 'Butterfly Estate',
   date: '13/07/2026',
@@ -53,6 +63,7 @@ check('butterfly-pdfjs', path.join(samples3, 'butterfly-pdfjs.txt'), {
 const samplesRem = '/workspace/audit-samples-removal';
 check('non-tpc-removal-pdfjs', path.join(samplesRem, 'non-tpc-20261021-pdfjs.txt'), {
   n: 3,
+  kind: 'removal',
   caseNo: 'TNS-TY-2026-002',
   estate: 'Tai Yuen Estate',
   date: '21/10/2026',
@@ -63,19 +74,25 @@ check('non-tpc-removal-pdfjs', path.join(samplesRem, 'non-tpc-20261021-pdfjs.txt
     'Dead tree (except for dead trees of particular interest)'
   ]
 });
-// Extra fields for removal rows
+// Extra fields for removal rows (kept on .extras; not in 20-col paste)
 (() => {
   const text = fs.readFileSync(path.join(samplesRem, 'non-tpc-20261021-pdfjs.txt'), 'utf8');
   const rows = parseReport(text, 'Non-TPC_Tree removal summary_20261021.pdf');
-  assert(rows.every(r => r[18] === 'Yes'), 'planting Yes: ' + rows.map(r => r[18]));
-  assert(rows.every(r => r[20] === '21/11/2026'), 'antRemoval: ' + rows.map(r => r[20]));
-  assert(rows.every(r => r[21] === '21/05/2026'), 'antComp: ' + rows.map(r => r[21]));
-  assert(rows.every(r => r[22] === 'N/A'), 'actual: ' + rows.map(r => r[22]));
+  assert(rows.every(r => r.kind === 'removal'), 'kind removal');
+  assert(rows.every(r => r.cells.length === 20), '20 cols: ' + rows[0].cells.length);
+  assert(rows.every(r => r.cells[0] === 'Non-TPC'), 'TPC/Non-TPC col: ' + rows.map(r => r.cells[0]));
+  assert(rows.every(r => r.cells[6] === 'Non-TPC'), 'Mitigation Non-TPC');
+  assert(rows.every(r => r.cells[15] === ''), 'Remarks empty (no case duplicate)');
+  assert(rows.every(r => r.extras.planting === 'Yes'), 'planting Yes: ' + rows.map(r => r.extras.planting));
+  assert(rows.every(r => r.extras.antRemoval === '21/11/2026'), 'antRemoval: ' + rows.map(r => r.extras.antRemoval));
+  assert(rows.every(r => r.extras.antComp === '21/05/2026'), 'antComp: ' + rows.map(r => r.extras.antComp));
+  assert(rows.every(r => r.extras.actual === 'N/A'), 'actual: ' + rows.map(r => r.extras.actual));
   console.log('non-tpc-removal extras PASS');
 })();
 
 check('sco-20261017-pdfjs', path.join(samplesRem, 'sco-20261017-pdfjs.txt'), {
   n: 6,
+  kind: 'removal',
   caseNo: 'TNS-SCO-2026-004',
   estate: 'Shui Chuen O Estate',
   date: '17/10/2026',
@@ -92,13 +109,29 @@ check('sco-20261017-pdfjs', path.join(samplesRem, 'sco-20261017-pdfjs.txt'), {
 (() => {
   const text = fs.readFileSync(path.join(samplesRem, 'sco-20261017-pdfjs.txt'), 'utf8');
   const rows = parseReport(text, 'Non-TPC_Tree removal summary_20261017.pdf');
-  assert(rows.every(r => r[18] === 'No'), 'sco planting No: ' + rows.map(r => r[18]));
-  assert(rows.every(r => r[19] === 'Steep slope (over 35 degrees)'), 'sco norep: ' + rows.map(r => r[19]));
-  assert(rows.every(r => r[20] === '17/11/2026'), 'sco antRemoval: ' + rows.map(r => r[20]));
-  assert(rows.every(r => r[21] === 'N/A'), 'sco antComp: ' + rows.map(r => r[21]));
-  assert(rows.every(r => r[22] === 'N/A'), 'sco actual: ' + rows.map(r => r[22]));
-  assert(rows.every(r => r[23] === 'TNS-SCO-2026-004'), 'sco remarks: ' + rows.map(r => r[23]));
+  assert(rows.every(r => r.cells.length === 20), 'sco 20 cols');
+  assert(rows.every(r => r.cells[0] === 'Non-TPC'), 'sco kind col');
+  assert(rows.every(r => r.extras.planting === 'No'), 'sco planting No: ' + rows.map(r => r.extras.planting));
+  assert(rows.every(r => r.extras.noReplaceReason === 'Steep slope (over 35 degrees)'), 'sco norep: ' + rows.map(r => r.extras.noReplaceReason));
+  assert(rows.every(r => r.extras.antRemoval === '17/11/2026'), 'sco antRemoval: ' + rows.map(r => r.extras.antRemoval));
+  assert(rows.every(r => r.extras.antComp === 'N/A'), 'sco antComp: ' + rows.map(r => r.extras.antComp));
+  assert(rows.every(r => r.extras.actual === 'N/A'), 'sco actual: ' + rows.map(r => r.extras.actual));
+  // Remarks must NOT duplicate Case No.
+  assert(rows.every(r => r.cells[15] === ''), 'sco remarks empty: ' + rows.map(r => r.cells[15]));
   console.log('sco-20261017 extras PASS');
+})();
+
+// Audit row shape = 18 TNS cols, includes AS Reply Date slot at index 12
+(() => {
+  const text = fs.readFileSync(path.join(samples3, 'shekmun-pdfjs.txt'), 'utf8');
+  const rows = parseReport(text, 'AS-TNS-SM-2026-006.pdf');
+  assert(rows.every(r => r.kind === 'audit'), 'audit kind');
+  assert(rows.every(r => r.cells.length === 18), 'audit 18 cols: ' + rows[0].cells.length);
+  assert(rows.every(r => r.cells[0] === 'AS'), 'Source AS');
+  assert(HEADERS_TNS.length === 18, 'HEADERS_TNS len');
+  assert(HEADERS_TNS[12] === 'AS Reply Date', 'AS Reply Date position');
+  assert(HEADERS_REMOVAL.length === 20, 'HEADERS_REMOVAL len');
+  console.log('tns-shape PASS');
 })();
 
 // Quick normalize sanity
@@ -130,7 +163,7 @@ assert(/BE-T0307_Hanger/.test(n3.replace(/\s+/g, '')) || /BE-T0307\s*_Hanger/.te
   );
   // If findings path yields a row, estate must come from prefix
   if (blankEstate.length) {
-    assert(blankEstate.every(r => r[1] === 'Shui Chuen O Estate'), 'blank estate audit: ' + (blankEstate[0] && blankEstate[0][1]));
+    assert(blankEstate.every(r => cells(r)[1] === 'Shui Chuen O Estate'), 'blank estate audit: ' + (blankEstate[0] && cells(blankEstate[0])[1]));
   }
   console.log('tree-prefix-fallback PASS');
 })();

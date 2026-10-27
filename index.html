@@ -28,6 +28,11 @@
         .btn:hover { background: #1565c0; }
         .btn.green { background: #388e3c; }
         .btn.green:hover { background: #2e7d32; }
+        .btn:disabled { background: #9e9e9e; cursor: not-allowed; opacity: 0.7; }
+        .btn.orange { background: #ef6c00; }
+        .btn.orange:hover { background: #e65100; }
+        .section-title { margin: 18px 0 8px; font-size: 16px; font-weight: 700; color: #1b5e20; }
+        .table-wrap { overflow-x: auto; margin-bottom: 16px; }
         .status { margin: 10px 0; padding: 10px; border-radius: 6px; }
         .status.info { background: #e3f2fd; }
         .status.success { background: #e8f5e9; }
@@ -45,7 +50,7 @@
 <body>
 <div class="header">
     <h1>🌳 Audit Report PDF → Excel Converter</h1>
-    <div style="font-size:14px; opacity:0.9;">團隊共用工具｜拖放 PDF 自動擷取 Findings → 複製表格貼到 Excel</div>
+    <div style="font-size:14px; opacity:0.9;">團隊共用工具｜拖放 PDF 自動擷取 → 複製（無表頭）貼到 Master Referral List</div>
 </div>
 
 <div class="container">
@@ -56,7 +61,8 @@
         3. 需要網路連線（載入 PDF 解析功能）<br>
         4. 支援一次拖入多份報告（Chung On、Fung Wo、Kam Fung、Lee On、Lung Hang、Lek Yuen、Yau Oi、Tai Hing 等）<br>
         5. 亦支援 <strong>Tree Removal under Arboricultural Maintenance</strong> 表格（Reason for tree removal → Observation）<br>
-        6. 亦可下載本頁的 HTML 檔案離線分享（Email、Teams、共用資料夾）
+        6. 複製分兩掣：<strong>複製 TNS（Audit）</strong>（18 欄）／<strong>複製 TPC/Non-TPC</strong>（20 欄）；<strong>不含表頭</strong>，直接貼 Excel<br>
+        7. 亦可下載本頁的 HTML 檔案離線分享（Email、Teams、共用資料夾）
     </div>
 
     <div class="drop-zone" id="dropZone">
@@ -71,35 +77,43 @@
     <div id="fileList" class="file-list"></div>
 
     <div class="controls">
-        <button class="btn green" id="copyBtn" onclick="copyTable()" disabled>📋 複製表格（可貼到 Excel）</button>
+        <button class="btn green" id="copyTnsBtn" onclick="copyTns()" disabled>📋 複製 TNS（Audit）</button>
+        <button class="btn orange" id="copyRemovalBtn" onclick="copyRemoval()" disabled>📋 複製 TPC/Non-TPC</button>
         <button class="btn" onclick="clearAll()">🗑️ 清除全部</button>
     </div>
 
     <div id="tableContainer"></div>
 
     <div class="footer-note">
-        提示：PDF 必須是「可選取文字」的版本（不是純掃描圖片）。擷取後按「複製表格」再貼到 Excel；若欄位不完整可在 Excel 手動補充。此工具只在瀏覽器本地處理，不會上傳任何檔案。
+        提示：PDF 必須是「可選取文字」的版本（不是純掃描圖片）。複製內容<strong>不含表頭</strong>，欄位對齊 Master Referral List（TNS 或 TNS_TPC &amp; Non-TPC）。貼到 Excel 時請對準正確工作表。此工具只在瀏覽器本地處理，不會上傳任何檔案。
     </div>
 </div>
 
 <script>
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-let allRows = [];
+let allRows = []; // { kind: 'audit'|'removal', cells: string[], extras?: object }
 
-const headers = [
+// Master Referral List › sheet TNS (18 cols) — Audit Report / AS routine
+const HEADERS_TNS = [
     "Source of Referral", "Estate", "Case No.", "Date Received", "Tree ID", "Observation",
     "Mitigation", "Inspection Date", "Date informed EMO upon inspection",
     "Case deadline (normal case)", "TS no action", "TS Mitigation work",
-    "Works Completion Date", "Date informed EMO upon works completion",
-    "Confirmed date", "Confirmed by", "Remarks", "TS Action",
-    "Compensatory / Replacement planting (Yes / No)",
-    "Reason for No Replacement planting (if applicable)",
-    "Anticipated date of Tree Removal",
-    "Anticipated date of Compensatory Planting",
-    "Actual date of Compensatory Planting",
-    "Remarks (if any)"
+    "AS Reply Date", "Works Completion Date", "Date informed EMO upon works completion",
+    "Confirmed date", "Confirmed by", "Remarks"
 ];
+
+// Master Referral List › sheet TNS_TPC & Non-TPC (20 cols)
+const HEADERS_REMOVAL = [
+    "TPC/Non-TPC", "Estate", "Case No.", "Date Received", "Tree ID", "Observation",
+    "Mitigation", "Inspection Date", "Date informed EMO upon inspection",
+    "Case deadline (normal case)", "AS Reply Date", "Works Completion Date",
+    "Date informed EMO upon works completion", "Confirmed Date", "Confirmed by",
+    "Remarks", "Stump Removal", "Status", "Monthly Report", "TS Report"
+];
+
+// kept for older test extractors
+const headers = HEADERS_TNS;
 
 const dropZone = document.getElementById('dropZone');
 const fileInput = document.getElementById('fileInput');
@@ -149,7 +163,7 @@ async function handleFiles(files) {
         }
     }
     renderTable();
-    document.getElementById('copyBtn').disabled = allRows.length === 0;
+    updateCopyButtons();
 }
 
 const KNOWN_PLACES = [
@@ -613,12 +627,16 @@ const NO_REPLACEMENT_REASONS = [
     'Rocky base slope'
 ].slice().sort((a, b) => b.length - a.length);
 
-const EMPTY_MID = ["", "", "", "", "", "", "", "", "", "", "", ""]; // Mitigation .. TS Action
-const EMPTY_REMOVAL_EXTRA = ["", "", "", "", "", ""];
-
 function isTreeRemovalForm(text) {
     return /Tree\s+Removal\s+under\s+Arboricultural\s+Maintenance/i.test(text)
         || /Reason\s+for\s+tree\s+removal/i.test(text);
+}
+
+function detectRemovalKind(text, filename) {
+    const blob = ((filename || "") + "\n" + (text || "")).replace(/\s+/g, " ");
+    if (/Non[\s\-]?TPC/i.test(blob)) return "Non-TPC";
+    if (/\bTPC\b/i.test(blob)) return "TPC";
+    return "Non-TPC";
 }
 
 
@@ -717,31 +735,41 @@ function extractRemovalExtras(slice, fullText) {
     };
 }
 
-function buildRemovalRow(estate, caseNo, dateReceived, treeId, obs, extras) {
-    const remarks = (extras && extras.remarks) || "";
-    const mid = ["", "", "", "", "", "", "", "", "", "", remarks, ""];
-    const extra = [
-        (extras && extras.planting) || "",
-        (extras && extras.noReplaceReason) || "",
-        (extras && extras.antRemoval) || "",
-        (extras && extras.antComp) || "",
-        (extras && extras.actual) || "",
-        remarks
-    ];
-    return [
-        "AS",
+function buildRemovalRow(estate, caseNo, dateReceived, treeId, obs, extras, removalKind) {
+    const kind = removalKind || "Non-TPC";
+    // Do not duplicate Case No. into Remarks — leave empty unless there is other text
+    const rawRemarks = (extras && extras.remarks) || "";
+    const remarks = (rawRemarks && String(rawRemarks).toUpperCase() !== String(caseNo || "").toUpperCase())
+        ? rawRemarks
+        : "";
+    const cells = [
+        kind,                              // TPC/Non-TPC
         estate || "Unknown Estate",
-        caseNo,
-        dateReceived,
+        caseNo || "",
+        dateReceived || "",
         treeId || "",
         obs || "",
-        ...mid,
-        ...extra
+        kind,                              // Mitigation
+        "",                                // Inspection Date
+        "",                                // Date informed EMO upon inspection
+        "",                                // Case deadline
+        "",                                // AS Reply Date
+        "",                                // Works Completion Date
+        "",                                // Date informed EMO upon works completion
+        "",                                // Confirmed Date
+        "",                                // Confirmed by
+        remarks,                           // Remarks
+        "",                                // Stump Removal
+        "",                                // Status
+        "",                                // Monthly Report
+        ""                                 // TS Report
     ];
+    return { kind: "removal", cells, extras: extras || {} };
 }
 
 function parseTreeRemovalForm(text, filename) {
     const rows = [];
+    const removalKind = detectRemovalKind(text, filename);
     const caseNo = extractRemovalCaseNo(text, filename);
     const dateReceived = extractRemovalDate(text);
     const defaultReason = findRemovalReason(text);
@@ -771,7 +799,8 @@ function parseTreeRemovalForm(text, filename) {
                 dateReceived,
                 "",
                 defaultReason || "(未能自動擷取 Reason for tree removal，請手動補充)",
-                defaultExtras
+                defaultExtras,
+                removalKind
             ));
         }
         return rows;
@@ -801,7 +830,8 @@ function parseTreeRemovalForm(text, filename) {
             dateReceived,
             t.id,
             reason || "(未能自動擷取 Reason for tree removal，請手動補充)",
-            extras
+            extras,
+            removalKind
         ));
     }
     return rows;
@@ -824,62 +854,91 @@ function parseReport(text, filename) {
 
     for (const f of unique) {
         const rowEstate = resolveEstate(estate, f.treeId, caseOut) || "Unknown Estate";
-        rows.push([
-            "AS",
-            rowEstate,
-            caseOut,
-            dateReceived,
-            f.treeId,
-            f.obs,
-            "", "", "", "", "", "", "", "", "", "", "", "",
-            "", "", "", "", "", ""
-        ]);
+        rows.push({
+            kind: "audit",
+            cells: [
+                "AS",
+                rowEstate,
+                caseOut,
+                dateReceived,
+                f.treeId,
+                f.obs,
+                "", "", "", "", "", "", "", "", "", "", "", ""
+            ]
+        });
     }
 
     if (rows.length === 0 && (caseOut || estate)) {
         const rowEstate = resolveEstate(estate, "", caseOut) || "Unknown Estate";
-        rows.push([
-            "AS",
-            rowEstate,
-            caseOut,
-            dateReceived,
-            "",
-            "(未能自動擷取 Findings，請手動補充)",
-            "", "", "", "", "", "", "", "", "", "", "", "",
-            "", "", "", "", "", ""
-        ]);
+        rows.push({
+            kind: "audit",
+            cells: [
+                "AS",
+                rowEstate,
+                caseOut,
+                dateReceived,
+                "",
+                "(未能自動擷取 Findings，請手動補充)",
+                "", "", "", "", "", "", "", "", "", "", "", ""
+            ]
+        });
     }
 
     return rows;
 }
 
-function renderTable() {
-    if (!allRows.length) {
-        document.getElementById('tableContainer').innerHTML = '<p>尚未有資料。請拖入 PDF。</p>';
-        return;
-    }
-    let html = '<table><thead><tr>';
-    headers.forEach(h => html += `<th>${h}</th>`);
-    html += '</tr></thead><tbody>';
-    allRows.forEach(row => {
-        html += '<tr>';
-        row.forEach(cell => html += `<td>${cell || ''}</td>`);
-        html += '</tr>';
-    });
-    html += '</tbody></table>';
-    document.getElementById('tableContainer').innerHTML = html;
+function auditRows() { return allRows.filter(r => r.kind === 'audit'); }
+function removalRows() { return allRows.filter(r => r.kind === 'removal'); }
+
+function updateCopyButtons() {
+    const tnsBtn = document.getElementById('copyTnsBtn');
+    const remBtn = document.getElementById('copyRemovalBtn');
+    if (tnsBtn) tnsBtn.disabled = auditRows().length === 0;
+    if (remBtn) remBtn.disabled = removalRows().length === 0;
 }
 
-function copyTable() {
-    if (!allRows.length) return;
-    // TSV: empty cells still emit tabs so Excel columns stay aligned
-    const text = [headers, ...allRows]
-        .map(row => row.map(cell => (cell == null ? '' : String(cell))).join('\t'))
+function renderSection(title, headerList, rows) {
+    let html = `<div class="section-title">${title}（${rows.length} 行）</div><div class="table-wrap"><table><thead><tr>`;
+    headerList.forEach(h => html += `<th>${h}</th>`);
+    html += '</tr></thead><tbody>';
+    rows.forEach(row => {
+        html += '<tr>';
+        row.cells.forEach(cell => html += `<td>${cell || ''}</td>`);
+        html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+    return html;
+}
+
+function renderTable() {
+    const box = document.getElementById('tableContainer');
+    if (!allRows.length) {
+        box.innerHTML = '<p>尚未有資料。請拖入 PDF。</p>';
+        return;
+    }
+    const audits = auditRows();
+    const removals = removalRows();
+    let html = '';
+    if (audits.length) html += renderSection('TNS（Audit Report）', HEADERS_TNS, audits);
+    if (removals.length) html += renderSection('TNS_TPC & Non-TPC（Tree Removal）', HEADERS_REMOVAL, removals);
+    box.innerHTML = html;
+}
+
+/** TSV data rows only — no header. Empty cells still emit tabs. */
+function rowsToTsv(rows) {
+    return rows
+        .map(row => row.cells.map(cell => (cell == null ? '' : String(cell))).join('\t'))
         .join('\n');
-    const btn = document.getElementById('copyBtn');
+}
+
+function copyKind(kind, btnId, label) {
+    const rows = kind === 'audit' ? auditRows() : removalRows();
+    if (!rows.length) return;
+    const text = rowsToTsv(rows);
+    const btn = document.getElementById(btnId);
     const originalLabel = btn ? btn.textContent : '';
     navigator.clipboard.writeText(text).then(() => {
-        setStatus('已複製表格內容（可直接貼到 Excel）', 'success');
+        setStatus(`已複製 ${rows.length} 行（${label}，無表頭，可貼到 Excel）`, 'success');
         if (btn) {
             btn.textContent = '已複製 ✓';
             setTimeout(() => { btn.textContent = originalLabel; }, 1500);
@@ -889,16 +948,20 @@ function copyTable() {
     });
 }
 
+function copyTns() { copyKind('audit', 'copyTnsBtn', 'TNS／Audit'); }
+function copyRemoval() { copyKind('removal', 'copyRemovalBtn', 'TPC/Non-TPC'); }
+
 function clearAll() {
     allRows = [];
     document.getElementById('tableContainer').innerHTML = '';
     document.getElementById('fileList').innerHTML = '';
     document.getElementById('status').innerHTML = '';
-    document.getElementById('copyBtn').disabled = true;
+    updateCopyButtons();
     fileInput.value = '';
 }
 
 renderTable();
+updateCopyButtons();
 </script>
 </body>
 </html>
