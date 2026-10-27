@@ -61,7 +61,7 @@
         3. 需要網路連線（載入 PDF 解析功能）<br>
         4. 支援一次拖入多份報告（Chung On、Fung Wo、Kam Fung、Lee On、Lung Hang、Lek Yuen、Yau Oi、Tai Hing 等）<br>
         5. 亦支援 <strong>Tree Removal under Arboricultural Maintenance</strong> → 輸出 <strong>Tree Removal Summary</strong> 20 欄<br>
-        6. 複製分兩掣：<strong>複製 TNS（Audit）</strong>（18 欄、無表頭）／<strong>複製 Tree Removal Summary</strong>（20 欄、<strong>含表頭</strong>）<br>
+        6. 複製分兩掣：<strong>複製 TNS（Audit）</strong>（18 欄、無表頭）／<strong>複製 Tree Removal Summary</strong>（20 欄、無表頭）<br>
         7. 亦可下載本頁的 HTML 檔案離線分享（Email、Teams、共用資料夾）
     </div>
 
@@ -1125,7 +1125,7 @@ function copyKind(kind, btnId, label, includeHeader, headerList) {
 }
 
 function copyTns() { copyKind('audit', 'copyTnsBtn', 'TNS／Audit', false, null); }
-function copyRemoval() { copyKind('removal', 'copyRemovalBtn', 'Tree Removal Summary', true, HEADERS_REMOVAL); }
+function copyRemoval() { copyKind('removal', 'copyRemovalBtn', 'Tree Removal Summary', false, HEADERS_REMOVAL); }
 
 function clearAll() {
     allRows = [];
