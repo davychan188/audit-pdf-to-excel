@@ -222,4 +222,46 @@ assert(/BE-T0307_Hanger/.test(n3.replace(/\s+/g, '')) || /BE-T0307\s*_Hanger/.te
   console.log('tree-prefix-fallback PASS');
 })();
 
+
+// Glued Height/DBH/Crown/Girth before Amenity (pdf.js compact)
+(() => {
+  const p1 = splitGluedMeasurements('83105973');
+  assert(p1 && p1.height === '8' && p1.dbh === '310' && p1.crown === '5' && p1.girth === '973', 'glue 83105973: ' + JSON.stringify(p1));
+  const p2 = splitGluedMeasurements('1137061162');
+  assert(p2 && p2.height === '11' && p2.dbh === '370' && p2.crown === '6' && p2.girth === '1162', 'glue 1137061162: ' + JSON.stringify(p2));
+  const p3 = splitGluedMeasurements('61301408');
+  assert(p3 && p3.height === '6' && p3.dbh === '130' && p3.crown === '1' && p3.girth === '408', 'glue 61301408: ' + JSON.stringify(p3));
+
+  // Full parse with measurements glued (no spaces between H/DBH/Crown/Girth)
+  const gluedText = [
+    'Tree Removal under Arboricultural Maintenance - non TPC applications',
+    'Estate / Project S/N Species Scientific name',
+    'Chinese name Height (m) DBH (mm) Crown Spread (m) Girth Size (mm)',
+    '26 TY-T0315 台灣相思 83105973 Low Poor Poor Poor Dead tree (except for dead trees of particular interest) Yes 21/11/2026 21/5/2026 N/A TNS-TY-2026-002',
+    '27 TY-T0571 石栗 1137061162 Low Poor Poor Poor Dead tree (except for dead trees of particular interest) Yes 21/11/2026 21/5/2026 N/A TNS-TY-2026-002',
+    '28 TY-T1198 羊蹄甲屬 61301408 Low Poor Poor Poor Dead tree (except for dead trees of particular interest) Yes 21/11/2026 21/5/2026 N/A TNS-TY-2026-002',
+    'Tai Yuen Estate Acacia confusa Tai Yuen Estate Aleurites moluccana Tai Yuen Estate Bauhinia spp.',
+    'Submitted by: Name & Post Sean Lee (TMS) Date: 21/10/2026'
+  ].join(' ');
+  const rows = parseReport(gluedText, 'TNS-TY-2026-002.pdf');
+  assert(rows.length === 3, 'glued rows: ' + rows.length);
+  assert(rows.every(r => r.kind === 'removal'), 'glued kind');
+  const c = rows.map(r => r.cells);
+  assert(c.map(r => r[5]).join(',') === '8,11,6', 'glued heights: ' + c.map(r => r[5]));
+  assert(c.map(r => r[6]).join(',') === '310,370,130', 'glued dbhs: ' + c.map(r => r[6]));
+  assert(c.map(r => r[7]).join(',') === '5,6,1', 'glued crowns: ' + c.map(r => r[7]));
+  assert(c.map(r => r[8]).join(',') === '973,1162,408', 'glued girths: ' + c.map(r => r[8]));
+  assert(c.every(r => r[9] === 'Low'), 'glued amenity');
+  assert(c.every(r => r[1] === 'Tai Yuen Estate'), 'glued estate');
+  assert(c.every(r => r[19] === 'TNS-TY-2026-002'), 'glued remarks');
+  // Simulate headerless TSV copy (copyRemoval uses includeHeader=false)
+  const tsvLines = c.map(r => r.join('\t'));
+  const tsv = tsvLines.join('\n');
+  assert(!tsv.startsWith('S/N'), 'tsv must not start with header');
+  assert(tsvLines[0].startsWith('26\tTai Yuen Estate\tTY-T0315'), 'tsv first data: ' + tsvLines[0].slice(0, 80));
+  assert(tsvLines[0].includes('\t8\t310\t5\t973\tLow\t'), 'tsv measurements in row0: ' + tsvLines[0]);
+  console.log('glued-measurements PASS');
+})();
+
+
 console.log('ALL PDFJS TESTS PASSED');

@@ -40,6 +40,7 @@
         table { width: 100%; border-collapse: collapse; background: white; font-size: 13px; }
         th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; }
         th { background: #4caf50; color: white; position: sticky; top: 0; }
+        thead th { user-select: none; -webkit-user-select: none; }
         tr:nth-child(even) { background: #f9f9f9; }
         .controls { margin: 12px 0; }
         .file-list { margin: 10px 0; font-size: 14px; }
@@ -714,6 +715,11 @@ function normalizeRemovalPdfText(text) {
     // Unglue S/N stuck to Tree No.
     t = t.replace(/(\d)([A-Z]{1,6}\d{0,2}-[A-Z]\d{3,5})(?![0-9A-Za-z])/g, "$1 $2");
     // Unglue measurement stuck to Amenity / Yes|No / letters
+    t = t.replace(/(\d{7,12})(High|Medium|Low)\b/gi, (m, digs, am) => {
+        const p = splitGluedMeasurements(digs);
+        if (!p) return `${digs} ${am}`;
+        return `${p.height} ${p.dbh} ${p.crown} ${p.girth} ${am}`;
+    });
     t = t.replace(/(\d)(High|Medium|Low)\b/gi, "$1 $2");
     t = t.replace(/([a-z\)）])(Yes|No)\b/gi, "$1 $2");
     t = t.replace(/\b(Yes|No)(?=\d)/gi, "$1 ");
@@ -817,6 +823,44 @@ function buildRemovalRow(fields) {
     return { kind: "removal", cells, extras: f };
 }
 
+
+/** Split glued Height+DBH+Crown+Girth digits before Amenity (e.g. 83105973 → 8,310,5,973). */
+function splitGluedMeasurements(digits) {
+    const s = String(digits || "");
+    if (!/^\d{7,12}$/.test(s)) return null;
+    let best = null;
+    let bestScore = -Infinity;
+    for (let hLen = 1; hLen <= 2; hLen++) {
+        for (let dbhLen = 2; dbhLen <= 4; dbhLen++) {
+            for (let cLen = 1; cLen <= 2; cLen++) {
+                const gLen = s.length - hLen - dbhLen - cLen;
+                if (gLen < 3 || gLen > 4) continue;
+                const height = s.slice(0, hLen);
+                const dbh = s.slice(hLen, hLen + dbhLen);
+                const crown = s.slice(hLen + dbhLen, hLen + dbhLen + cLen);
+                const girth = s.slice(hLen + dbhLen + cLen);
+                const H = Number(height), D = Number(dbh), C = Number(crown), G = Number(girth);
+                if (H < 1 || H > 50) continue;
+                if (D < 20 || D > 2500) continue;
+                if (C < 1 || C > 40) continue;
+                if (G < 50 || G > 8000) continue;
+                const expected = Math.round(D * Math.PI);
+                const girthErr = Math.abs(G - expected) / Math.max(expected, 1);
+                let score = 10 - girthErr * 20;
+                if (girthErr < 0.05) score += 50;
+                else if (girthErr < 0.15) score += 20;
+                if (dbhLen === 3) score += 5;
+                if (hLen === 2 && H < 10) score -= 8; // leading zero height unlikely
+                if (score > bestScore) {
+                    bestScore = score;
+                    best = { height, dbh, crown, girth };
+                }
+            }
+        }
+    }
+    return best;
+}
+
 function parseTreeRowNear(text, treeId, index, nextIndex) {
     const sliceStart = Math.max(0, index - 80);
     const sliceEnd = nextIndex != null ? nextIndex : Math.min(text.length, index + 900);
@@ -870,6 +914,19 @@ function parseTreeRowNear(text, treeId, index, nextIndex) {
             crown = nums[3];
             girth = nums[4];
             amenity = nums[5];
+        } else {
+            // pdf.js may glue Height/DBH/Crown/Girth: 83105973 Low
+            const glued = forward.match(/(\d{7,12})\s*(High|Medium|Low)/i);
+            if (glued) {
+                const p = splitGluedMeasurements(glued[1]);
+                if (p) {
+                    height = p.height;
+                    dbh = p.dbh;
+                    crown = p.crown;
+                    girth = p.girth;
+                    amenity = glued[2];
+                }
+            }
         }
         const cond = forward.match(/\b(High|Medium|Low)\s+(Good|Average|Poor)\s+(Good|Average|Poor)\s+(Good|Average|Poor)\b/i);
         if (cond) {
@@ -1125,7 +1182,7 @@ function copyKind(kind, btnId, label, includeHeader, headerList) {
 }
 
 function copyTns() { copyKind('audit', 'copyTnsBtn', 'TNS／Audit', false, null); }
-function copyRemoval() { copyKind('removal', 'copyRemovalBtn', 'Tree Removal Summary', false, HEADERS_REMOVAL); }
+function copyRemoval() { copyKind('removal', 'copyRemovalBtn', 'Tree Removal Summary', false, HEADERS_REMOVAL); } // includeHeader=false
 
 function clearAll() {
     allRows = [];
