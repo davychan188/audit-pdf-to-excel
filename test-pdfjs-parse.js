@@ -61,65 +61,116 @@ check('butterfly-pdfjs', path.join(samples3, 'butterfly-pdfjs.txt'), {
 });
 
 const samplesRem = '/workspace/audit-samples-removal';
-check('non-tpc-removal-pdfjs', path.join(samplesRem, 'non-tpc-20261021-pdfjs.txt'), {
+
+function checkRemoval(lab, file, exp) {
+  const text = fs.readFileSync(file, 'utf8');
+  const rows = parseReport(text, path.basename(file).replace(/\.txt$/, '') + '.pdf');
+  assert(rows.length === exp.n, `${lab}: expected ${exp.n} rows, got ${rows.length}`);
+  assert(rows.every(r => r.kind === 'removal'), `${lab}: kind`);
+  assert(rows.every(r => r.cells.length === 20), `${lab}: 20 cols`);
+  const c = rows.map(r => r.cells);
+  console.log(lab, c.map(r => ({ sn: r[0], estate: r[1], tree: r[2], sci: r[3], zh: r[4], h: r[5], reason: r[13], remarks: r[19] })));
+  assert(c.every(r => r[1] === exp.estate), `${lab}: estate ${c[0] && c[0][1]}`);
+  assert(c.map(r => r[2]).join(',') === exp.trees.join(','), `${lab}: trees`);
+  assert(c.map(r => r[0]).join(',') === exp.sns.join(','), `${lab}: sns ${c.map(r => r[0])}`);
+  assert(c.map(r => r[3]).join('|') === exp.scientific.join('|'), `${lab}: sci ${c.map(r => r[3]).join('|')}`);
+  assert(c.map(r => r[4]).join('|') === exp.chinese.join('|'), `${lab}: zh ${c.map(r => r[4]).join('|')}`);
+  assert(c.map(r => r[5]).join(',') === exp.heights.join(','), `${lab}: heights`);
+  assert(c.map(r => r[6]).join(',') === exp.dbhs.join(','), `${lab}: dbhs`);
+  assert(c.map(r => r[7]).join(',') === exp.crowns.join(','), `${lab}: crowns`);
+  assert(c.map(r => r[8]).join(',') === exp.girths.join(','), `${lab}: girths`);
+  assert(c.every(r => r[9] === 'Low'), `${lab}: amenity`);
+  assert(c.every(r => r[10] === 'Poor' && r[11] === 'Poor' && r[12] === 'Poor'), `${lab}: conditions`);
+  assert(c.map(r => r[13]).join('|') === exp.reasons.join('|'), `${lab}: reasons`);
+  assert(c.every(r => r[14] === exp.planting), `${lab}: planting ${c.map(r => r[14])}`);
+  if (exp.noReplace != null) {
+    assert(c.every(r => r[15] === exp.noReplace), `${lab}: noReplace ${c.map(r => r[15])}`);
+  }
+  assert(c.every(r => r[16] === exp.antRemoval), `${lab}: antRemoval ${c.map(r => r[16])}`);
+  assert(c.every(r => r[17] === exp.antComp), `${lab}: antComp ${c.map(r => r[17])}`);
+  assert(c.every(r => r[18] === exp.actual), `${lab}: actual ${c.map(r => r[18])}`);
+  assert(c.every(r => r[19] === exp.remarks), `${lab}: remarks ${c.map(r => r[19])}`);
+  console.log(lab, 'PASS');
+}
+
+checkRemoval('non-tpc-removal-pdfjs', path.join(samplesRem, 'non-tpc-20261021-pdfjs.txt'), {
   n: 3,
-  kind: 'removal',
-  caseNo: 'TNS-TY-2026-002',
   estate: 'Tai Yuen Estate',
-  date: '21/10/2026',
+  sns: ['26', '27', '28'],
   trees: ['TY-T0315', 'TY-T0571', 'TY-T1198'],
-  obs: [
+  scientific: ['Acacia confusa', 'Aleurites moluccana', 'Bauhinia spp.'],
+  chinese: ['台灣相思', '石栗', '羊蹄甲屬'],
+  heights: ['8', '11', '6'],
+  dbhs: ['310', '370', '130'],
+  crowns: ['5', '6', '1'],
+  girths: ['973', '1162', '408'],
+  reasons: [
     'Dead tree (except for dead trees of particular interest)',
     'Dead tree (except for dead trees of particular interest)',
     'Dead tree (except for dead trees of particular interest)'
-  ]
+  ],
+  planting: 'Yes',
+  noReplace: '',
+  antRemoval: '21/11/2026',
+  antComp: '21/5/2026',
+  actual: 'N/A',
+  remarks: 'TNS-TY-2026-002'
 });
-// Extra fields for removal rows (kept on .extras; not in 20-col paste)
-(() => {
-  const text = fs.readFileSync(path.join(samplesRem, 'non-tpc-20261021-pdfjs.txt'), 'utf8');
-  const rows = parseReport(text, 'Non-TPC_Tree removal summary_20261021.pdf');
-  assert(rows.every(r => r.kind === 'removal'), 'kind removal');
-  assert(rows.every(r => r.cells.length === 20), '20 cols: ' + rows[0].cells.length);
-  assert(rows.every(r => r.cells[0] === 'Non-TPC'), 'TPC/Non-TPC col: ' + rows.map(r => r.cells[0]));
-  assert(rows.every(r => r.cells[6] === 'Non-TPC'), 'Mitigation Non-TPC');
-  assert(rows.every(r => r.cells[15] === ''), 'Remarks empty (no case duplicate)');
-  assert(rows.every(r => r.extras.planting === 'Yes'), 'planting Yes: ' + rows.map(r => r.extras.planting));
-  assert(rows.every(r => r.extras.antRemoval === '21/11/2026'), 'antRemoval: ' + rows.map(r => r.extras.antRemoval));
-  assert(rows.every(r => r.extras.antComp === '21/05/2026'), 'antComp: ' + rows.map(r => r.extras.antComp));
-  assert(rows.every(r => r.extras.actual === 'N/A'), 'actual: ' + rows.map(r => r.extras.actual));
-  console.log('non-tpc-removal extras PASS');
-})();
 
-check('sco-20261017-pdfjs', path.join(samplesRem, 'sco-20261017-pdfjs.txt'), {
+checkRemoval('sco-20261017-pdfjs', path.join(samplesRem, 'sco-20261017-pdfjs.txt'), {
   n: 6,
-  kind: 'removal',
-  caseNo: 'TNS-SCO-2026-004',
   estate: 'Shui Chuen O Estate',
-  date: '17/10/2026',
+  sns: ['20', '21', '22', '23', '24', '25'],
   trees: ['SCO-A0004', 'SCO-A0005', 'SCO-A0006', 'SCO-A0007', 'SCO-A0008', 'SCO-A0009'],
-  obs: [
+  scientific: [
+    'Leucaena leucocephala', 'Acacia confusa', 'Acacia confusa',
+    'Leucaena leucocephala', 'Pinus elliottii', 'Leucaena leucocephala'
+  ],
+  chinese: ['銀合歡', '台灣相思', '台灣相思', '銀合歡', '濕地松(愛氏松)', '銀合歡'],
+  heights: ['6', '4', '5', '7', '7', '8'],
+  dbhs: ['220', '130', '120', '210', '210', '205'],
+  crowns: ['3', '2', '2', '3', '1', '4'],
+  girths: ['691', '408', '377', '659', '659', '644'],
+  reasons: [
     'Removal of common undesirable species',
     'Tree removal for the purpose of woodland management',
     'Tree removal for the purpose of woodland management',
     'Removal of common undesirable species',
     'Dead tree (except for dead trees of particular interest)',
     'Removal of common undesirable species'
-  ]
+  ],
+  planting: 'No',
+  noReplace: 'Steep slope (over 35 degrees)',
+  antRemoval: '17/11/2026',
+  antComp: 'N/A',
+  actual: 'N/A',
+  remarks: 'TNS-SCO-2026-004'
 });
-(() => {
-  const text = fs.readFileSync(path.join(samplesRem, 'sco-20261017-pdfjs.txt'), 'utf8');
-  const rows = parseReport(text, 'Non-TPC_Tree removal summary_20261017.pdf');
-  assert(rows.every(r => r.cells.length === 20), 'sco 20 cols');
-  assert(rows.every(r => r.cells[0] === 'Non-TPC'), 'sco kind col');
-  assert(rows.every(r => r.extras.planting === 'No'), 'sco planting No: ' + rows.map(r => r.extras.planting));
-  assert(rows.every(r => r.extras.noReplaceReason === 'Steep slope (over 35 degrees)'), 'sco norep: ' + rows.map(r => r.extras.noReplaceReason));
-  assert(rows.every(r => r.extras.antRemoval === '17/11/2026'), 'sco antRemoval: ' + rows.map(r => r.extras.antRemoval));
-  assert(rows.every(r => r.extras.antComp === 'N/A'), 'sco antComp: ' + rows.map(r => r.extras.antComp));
-  assert(rows.every(r => r.extras.actual === 'N/A'), 'sco actual: ' + rows.map(r => r.extras.actual));
-  // Remarks must NOT duplicate Case No.
-  assert(rows.every(r => r.cells[15] === ''), 'sco remarks empty: ' + rows.map(r => r.cells[15]));
-  console.log('sco-20261017 extras PASS');
-})();
+
+// Also accept pdftotext-style Tai Yuen layout
+checkRemoval('non-tpc-removal-pdftotext', path.join(samplesRem, 'non-tpc-20261021.txt'), {
+  n: 3,
+  estate: 'Tai Yuen Estate',
+  sns: ['26', '27', '28'],
+  trees: ['TY-T0315', 'TY-T0571', 'TY-T1198'],
+  scientific: ['Acacia confusa', 'Aleurites moluccana', 'Bauhinia spp.'],
+  chinese: ['台灣相思', '石栗', '羊蹄甲屬'],
+  heights: ['8', '11', '6'],
+  dbhs: ['310', '370', '130'],
+  crowns: ['5', '6', '1'],
+  girths: ['973', '1162', '408'],
+  reasons: [
+    'Dead tree (except for dead trees of particular interest)',
+    'Dead tree (except for dead trees of particular interest)',
+    'Dead tree (except for dead trees of particular interest)'
+  ],
+  planting: 'Yes',
+  noReplace: '',
+  antRemoval: '21/11/2026',
+  antComp: '21/5/2026',
+  actual: 'N/A',
+  remarks: 'TNS-TY-2026-002'
+});
 
 // Audit row shape = 18 TNS cols, includes AS Reply Date slot at index 12
 (() => {
@@ -131,6 +182,9 @@ check('sco-20261017-pdfjs', path.join(samplesRem, 'sco-20261017-pdfjs.txt'), {
   assert(HEADERS_TNS.length === 18, 'HEADERS_TNS len');
   assert(HEADERS_TNS[12] === 'AS Reply Date', 'AS Reply Date position');
   assert(HEADERS_REMOVAL.length === 20, 'HEADERS_REMOVAL len');
+  assert(HEADERS_REMOVAL[0] === 'S/N', 'removal header S/N');
+  assert(HEADERS_REMOVAL[3] === 'Scientific Name', 'removal scientific');
+  assert(HEADERS_REMOVAL[19] === 'Remarks (if any)', 'removal remarks header');
   console.log('tns-shape PASS');
 })();
 

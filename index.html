@@ -50,7 +50,7 @@
 <body>
 <div class="header">
     <h1>🌳 Audit Report PDF → Excel Converter</h1>
-    <div style="font-size:14px; opacity:0.9;">團隊共用工具｜拖放 PDF 自動擷取 → 複製（無表頭）貼到 Master Referral List</div>
+    <div style="font-size:14px; opacity:0.9;">團隊共用工具｜拖放 PDF 自動擷取 → 複製貼到 Excel（Audit→TNS／Removal→Tree Removal Summary）</div>
 </div>
 
 <div class="container">
@@ -60,8 +60,8 @@
         2. 用 Chrome / Edge / Firefox 開啟即可使用，無需安裝任何程式<br>
         3. 需要網路連線（載入 PDF 解析功能）<br>
         4. 支援一次拖入多份報告（Chung On、Fung Wo、Kam Fung、Lee On、Lung Hang、Lek Yuen、Yau Oi、Tai Hing 等）<br>
-        5. 亦支援 <strong>Tree Removal under Arboricultural Maintenance</strong> 表格（Reason for tree removal → Observation）<br>
-        6. 複製分兩掣：<strong>複製 TNS（Audit）</strong>（18 欄）／<strong>複製 TPC/Non-TPC</strong>（20 欄）；<strong>不含表頭</strong>，直接貼 Excel<br>
+        5. 亦支援 <strong>Tree Removal under Arboricultural Maintenance</strong> → 輸出 <strong>Tree Removal Summary</strong> 20 欄<br>
+        6. 複製分兩掣：<strong>複製 TNS（Audit）</strong>（18 欄、無表頭）／<strong>複製 Tree Removal Summary</strong>（20 欄、<strong>含表頭</strong>）<br>
         7. 亦可下載本頁的 HTML 檔案離線分享（Email、Teams、共用資料夾）
     </div>
 
@@ -78,14 +78,14 @@
 
     <div class="controls">
         <button class="btn green" id="copyTnsBtn" onclick="copyTns()" disabled>📋 複製 TNS（Audit）</button>
-        <button class="btn orange" id="copyRemovalBtn" onclick="copyRemoval()" disabled>📋 複製 TPC/Non-TPC</button>
+        <button class="btn orange" id="copyRemovalBtn" onclick="copyRemoval()" disabled>📋 複製 Tree Removal Summary</button>
         <button class="btn" onclick="clearAll()">🗑️ 清除全部</button>
     </div>
 
     <div id="tableContainer"></div>
 
     <div class="footer-note">
-        提示：PDF 必須是「可選取文字」的版本（不是純掃描圖片）。複製內容<strong>不含表頭</strong>，欄位對齊 Master Referral List（TNS 或 TNS_TPC &amp; Non-TPC）。貼到 Excel 時請對準正確工作表。此工具只在瀏覽器本地處理，不會上傳任何檔案。
+        提示：PDF 必須是「可選取文字」的版本（不是純掃描圖片）。Audit 複製<strong>不含表頭</strong>（對齊 Master Referral List › TNS）；Tree Removal 複製<strong>含表頭</strong>（對齊 Tree Removal Summary）。此工具只在瀏覽器本地處理，不會上傳任何檔案。
     </div>
 </div>
 
@@ -103,13 +103,16 @@ const HEADERS_TNS = [
     "Confirmed date", "Confirmed by", "Remarks"
 ];
 
-// Master Referral List › sheet TNS_TPC & Non-TPC (20 cols)
+// Tree Removal Summary (20 cols) — Non-TPC / TPC tree removal forms
 const HEADERS_REMOVAL = [
-    "TPC/Non-TPC", "Estate", "Case No.", "Date Received", "Tree ID", "Observation",
-    "Mitigation", "Inspection Date", "Date informed EMO upon inspection",
-    "Case deadline (normal case)", "AS Reply Date", "Works Completion Date",
-    "Date informed EMO upon works completion", "Confirmed Date", "Confirmed by",
-    "Remarks", "Stump Removal", "Status", "Monthly Report", "TS Report"
+    "S/N", "Estate / Project", "Tree No.", "Scientific Name", "Chinese Name",
+    "Height (m)", "DBH (mm)", "Crown Spread (m)", "Girth Size (mm)",
+    "Amenity Value (High/Medium/Low)", "Form (Good/Average/Poor)",
+    "Health (Good/Average/Poor)", "Structural Condition (Good/Average/Poor)",
+    "Reason for Tree Removal", "Compensatory / Replacement Planting (Yes / No)",
+    "Reason for No Replacement Planting (If applicable)",
+    "Anticipated Date of Tree Removal", "Anticipated Date of Compensatory Planting",
+    "Actual Date of Compensatory Planting", "Remarks (if any)"
 ];
 
 // kept for older test extractors
@@ -696,6 +699,58 @@ function extractEstateNear(text, index) {
     return "";
 }
 
+function keepPdfDMY(s) {
+    const m = String(s || "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!m) return String(s || "").trim();
+    // Keep PDF style (may be unpadded month/day), e.g. 21/5/2026
+    return `${String(Number(m[1]))}/${String(Number(m[2]))}/${m[3]}`;
+}
+
+function normalizeRemovalPdfText(text) {
+    let t = String(text || "");
+    t = t.replace(/\s*-\s*/g, "-");
+    t = t.replace(/\s*\/\s*/g, "/");
+    // Do NOT glue digit↔digit (would smash Height/DBH/Crown/Girth)
+    // Unglue S/N stuck to Tree No.
+    t = t.replace(/(\d)([A-Z]{1,6}\d{0,2}-[A-Z]\d{3,5})(?![0-9A-Za-z])/g, "$1 $2");
+    // Unglue measurement stuck to Amenity / Yes|No / letters
+    t = t.replace(/(\d)(High|Medium|Low)\b/gi, "$1 $2");
+    t = t.replace(/([a-z\)）])(Yes|No)\b/gi, "$1 $2");
+    t = t.replace(/\b(Yes|No)(?=\d)/gi, "$1 ");
+    t = t.replace(/((?:AS|TNS)(?:-[A-Z0-9]+)+-\d{4}-\d{3})(?=[A-Za-z])/gi, "$1 ");
+    t = t.replace(/([A-Za-z0-9\/])((?:AS|TNS)(?:-[A-Z0-9]+)+-\d{4}-\d{3})(?![0-9])/gi, "$1 $2");
+    t = t.replace(/(\d)(N\/A)/gi, "$1 $2");
+    t = t.replace(/(N\/A)(?=N\/A)/gi, "$1 ");
+    t = t.replace(/\b(N\/A)(?=[A-Z0-9])/gi, "$1 ");
+    // Light letter glue only inside known split case fragments like "T NS"
+    t = t.replace(/\b(T)\s+(NS)\b/gi, "$1$2");
+    t = t.replace(/[ \t]+/g, " ");
+    return t;
+}
+
+const CHINESE_TO_SCI = {
+    "台灣相思": "Acacia confusa",
+    "石栗": "Aleurites moluccana",
+    "羊蹄甲屬": "Bauhinia spp.",
+    "銀合歡": "Leucaena leucocephala",
+    "濕地松(愛氏松)": "Pinus elliottii",
+    "濕地松（愛氏松）": "Pinus elliottii",
+    "濕地松": "Pinus elliottii"
+};
+
+function extractScientificNamesInOrder(text) {
+    const names = [];
+    const re = /\b([A-Z][a-z]{2,})\s+(spp\.|[a-z]{3,}(?:\s+(?:var\.|subsp\.)\s+[a-z]+)?)\b/g;
+    const skipGenus = /^(Tree|Removal|Reason|Health|Form|Structural|Amenity|Compensatory|Anticipated|Actual|Remarks|Signature|Submitted|Measurements|Species|Scientific|Chinese|Crown|Girth|Size|Value|Estate|Project|Dead|Particular|Interest|Common|Undesirable|Woodland|Management|Steep|Slope|Leave|Growing|Restricted|Planter|Rocky|Presence|Imminent|Danger|Black|Triage|System|Guidelines|Under|Maintenance|Arboricultural|Applications|Name|Post|Sean|Lee|Date|Average|Poor|Good|Medium|High|Yes|No|Condition|Planting|Replacement|Spread|Medium|Low|Tai|Yuen|Shui|Chuen|Butterfly|Kam|Fung|Shek|Mun)$/i;
+    const skipSpecies = /^(except|for|dead|trees|of|particular|interest|common|undesirable|species|purpose|woodland|management|under|arboricultural|maintenance|applications|condition|value|planting|replacement|compensatory|anticipated|actual|remarks|signature|submitted|measurements|spread|size|average|poor|good|medium|high|yes|no|project|estate|court|date|name|post)$/i;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+        if (skipGenus.test(m[1]) || skipSpecies.test(m[2])) continue;
+        names.push(`${m[1]} ${m[2]}`);
+    }
+    return names;
+}
+
 function extractRemovalExtras(slice, fullText) {
     let planting = "";
     const yn = slice.match(/\b(Yes|No)\b/i);
@@ -704,7 +759,6 @@ function extractRemovalExtras(slice, fullText) {
     const noReplaceReason = findNoReplacementReason(slice) || findNoReplacementReason(fullText);
 
     const afterYn = yn ? slice.slice(yn.index + yn[0].length) : slice;
-    // Capture DMY dates and N/A tokens in order (handles glued 17/11/2026N/AN/A)
     const tokens = [];
     const tokRe = /(\d{1,2}\/\d{1,2}\/\d{4})|N\/A/gi;
     let tm;
@@ -712,9 +766,10 @@ function extractRemovalExtras(slice, fullText) {
     const submitted = extractRemovalDate(fullText);
     const filtered = tokens.filter(tok => {
         if (/^N\/A$/i.test(tok)) return true;
+        // Compare padded forms so 21/5/2026 ≠ submitted 21/10/2026
         return normalizeDMY(tok) !== submitted;
     });
-    const normTok = (tok) => /^N\/A$/i.test(tok) ? "N/A" : normalizeDMY(tok);
+    const normTok = (tok) => /^N\/A$/i.test(tok) ? "N/A" : keepPdfDMY(tok);
     let antRemoval = filtered[0] ? normTok(filtered[0]) : "";
     let antComp = filtered[1] ? normTok(filtered[1]) : "";
     let actual = filtered[2] ? normTok(filtered[2]) : "";
@@ -735,49 +790,127 @@ function extractRemovalExtras(slice, fullText) {
     };
 }
 
-function buildRemovalRow(estate, caseNo, dateReceived, treeId, obs, extras, removalKind) {
-    const kind = removalKind || "Non-TPC";
-    // Do not duplicate Case No. into Remarks — leave empty unless there is other text
-    const rawRemarks = (extras && extras.remarks) || "";
-    const remarks = (rawRemarks && String(rawRemarks).toUpperCase() !== String(caseNo || "").toUpperCase())
-        ? rawRemarks
-        : "";
+function buildRemovalRow(fields) {
+    const f = fields || {};
     const cells = [
-        kind,                              // TPC/Non-TPC
-        estate || "Unknown Estate",
-        caseNo || "",
-        dateReceived || "",
-        treeId || "",
-        obs || "",
-        kind,                              // Mitigation
-        "",                                // Inspection Date
-        "",                                // Date informed EMO upon inspection
-        "",                                // Case deadline
-        "",                                // AS Reply Date
-        "",                                // Works Completion Date
-        "",                                // Date informed EMO upon works completion
-        "",                                // Confirmed Date
-        "",                                // Confirmed by
-        remarks,                           // Remarks
-        "",                                // Stump Removal
-        "",                                // Status
-        "",                                // Monthly Report
-        ""                                 // TS Report
+        f.sn != null && f.sn !== "" ? String(f.sn) : "",
+        f.estate || "Unknown Estate",
+        f.treeId || "",
+        f.scientific || "",
+        f.chinese || "",
+        f.height != null && f.height !== "" ? String(f.height) : "",
+        f.dbh != null && f.dbh !== "" ? String(f.dbh) : "",
+        f.crown != null && f.crown !== "" ? String(f.crown) : "",
+        f.girth != null && f.girth !== "" ? String(f.girth) : "",
+        f.amenity || "",
+        f.form || "",
+        f.health || "",
+        f.structural || "",
+        f.reason || "",
+        f.planting || "",
+        f.noReplaceReason || "",
+        f.antRemoval || "",
+        f.antComp || "",
+        f.actual || "",
+        f.remarks || ""
     ];
-    return { kind: "removal", cells, extras: extras || {} };
+    return { kind: "removal", cells, extras: f };
+}
+
+function parseTreeRowNear(text, treeId, index, nextIndex) {
+    const sliceStart = Math.max(0, index - 80);
+    const sliceEnd = nextIndex != null ? nextIndex : Math.min(text.length, index + 900);
+    const slice = text.slice(sliceStart, sliceEnd);
+    const forward = text.slice(index, sliceEnd);
+
+    let sn = "";
+    const before = text.slice(Math.max(0, index - 12), index);
+    const snm = before.match(/(\d{1,3})\s*$/);
+    if (snm) {
+        sn = String(Number(snm[1]));
+    } else {
+        // pdftotext: "26   Tai Yuen Estate   TY-T0315"
+        const wider = text.slice(Math.max(0, index - 80), index + treeId.length);
+        const snm2 = wider.match(new RegExp("(?:^|[^0-9])(\\d{1,3})\\s+(?:[A-Za-z][\\s\\S]{0,60}?)?" + escapeRegExp(treeId)));
+        if (snm2) sn = String(Number(snm2[1]));
+    }
+
+    let chinese = "";
+    let height = "", dbh = "", crown = "", girth = "";
+    let amenity = "", form = "", health = "", structural = "";
+
+    // pdf.js compact row: TREE 中文 H DBH Crown Girth Amenity Form Health Structural …
+    const compact = forward.match(
+        new RegExp(
+            escapeRegExp(treeId) +
+            "\\s+([\\u4e00-\\u9fff（）()]+)\\s+" +
+            "(\\d+(?:\\.\\d+)?)\\s+(\\d+)\\s+(\\d+(?:\\.\\d+)?)\\s+(\\d+)\\s+" +
+            "(High|Medium|Low)\\s+(Good|Average|Poor)\\s+(Good|Average|Poor)\\s+(Good|Average|Poor)",
+            "i"
+        )
+    );
+    if (compact) {
+        chinese = compact[1];
+        height = compact[2];
+        dbh = compact[3];
+        crown = compact[4];
+        girth = compact[5];
+        amenity = compact[6];
+        form = titleCaseWord(compact[7]);
+        health = titleCaseWord(compact[8]);
+        structural = titleCaseWord(compact[9]);
+    } else {
+        // pdftotext / looser: Chinese then four numbers somewhere after tree id
+        const cjk = forward.match(/([\u4e00-\u9fff（）()]{1,20})/);
+        if (cjk) chinese = cjk[1];
+        const nums = forward.match(/(\d+(?:\.\d+)?)\s+(\d+)\s+(\d+(?:\.\d+)?)\s+(\d+)\s+(High|Medium|Low)/i);
+        if (nums) {
+            height = nums[1];
+            dbh = nums[2];
+            crown = nums[3];
+            girth = nums[4];
+            amenity = nums[5];
+        }
+        const cond = forward.match(/\b(High|Medium|Low)\s+(Good|Average|Poor)\s+(Good|Average|Poor)\s+(Good|Average|Poor)\b/i);
+        if (cond) {
+            amenity = amenity || cond[1];
+            form = titleCaseWord(cond[2]);
+            health = titleCaseWord(cond[3]);
+            structural = titleCaseWord(cond[4]);
+        }
+        // Scientific name often sits just before Tree No. in layout text
+    }
+
+    // Scientific name immediately before tree id (pdftotext column layout)
+    let scientific = "";
+    const pre = text.slice(Math.max(0, index - 120), index);
+    const sciPre = pre.match(/\b([A-Z][a-z]{2,})\s+(spp\.|[a-z]{3,})\s*$/);
+    if (sciPre && !/^(Estate|Project|Tree|Name|Chinese)$/i.test(sciPre[1])) {
+        scientific = `${sciPre[1]} ${sciPre[2]}`;
+    }
+
+    return {
+        sn, chinese, height, dbh, crown, girth, amenity, form, health, structural, scientific,
+        slice, forward
+    };
+}
+
+function titleCaseWord(s) {
+    const t = String(s || "");
+    if (!t) return "";
+    return t.charAt(0).toUpperCase() + t.slice(1).toLowerCase();
 }
 
 function parseTreeRemovalForm(text, filename) {
+    text = normalizeRemovalPdfText(text);
     const rows = [];
     const removalKind = detectRemovalKind(text, filename);
     const caseNo = extractRemovalCaseNo(text, filename);
-    const dateReceived = extractRemovalDate(text);
     const defaultReason = findRemovalReason(text);
     const defaultEstate = extractEstate(text, filename || "");
     const defaultExtras = extractRemovalExtras(text, text);
+    const sciList = extractScientificNamesInOrder(text);
 
-    // Tree No. e.g. ML-T0419, CHH-T0551, SL1-T0231, SL1-A0048
-    // Also accept IDs after a digit with no word boundary (pdf.js glue: 26TY-T0315)
     const treeRe = /(?:^|[^A-Za-z])([A-Z]{1,6}\d{0,2}-[A-Z]\d{3,5})(?![0-9A-Za-z])/g;
     const seen = new Set();
     const trees = [];
@@ -793,27 +926,38 @@ function parseTreeRemovalForm(text, filename) {
 
     if (trees.length === 0) {
         if (defaultReason || defaultEstate || caseNo) {
-            rows.push(buildRemovalRow(
-                resolveEstate(defaultEstate, "", caseNo) || "Unknown Estate",
-                caseNo,
-                dateReceived,
-                "",
-                defaultReason || "(未能自動擷取 Reason for tree removal，請手動補充)",
-                defaultExtras,
-                removalKind
-            ));
+            rows.push(buildRemovalRow({
+                sn: "",
+                estate: resolveEstate(defaultEstate, "", caseNo) || "Unknown Estate",
+                treeId: "",
+                scientific: "",
+                chinese: "",
+                reason: defaultReason || "(未能自動擷取 Reason for tree removal，請手動補充)",
+                planting: defaultExtras.planting,
+                noReplaceReason: defaultExtras.noReplaceReason,
+                antRemoval: defaultExtras.antRemoval,
+                antComp: defaultExtras.antComp,
+                actual: defaultExtras.actual,
+                remarks: defaultExtras.remarks || caseNo || ""
+            }));
         }
         return rows;
     }
 
-    for (const t of trees) {
-        const next = trees.find(x => x.index > t.index);
-        const sliceEnd = next ? next.index : Math.min(text.length, t.index + 1200);
-        // Include some context before tree id (reason text may wrap above the row)
-        const sliceStart = Math.max(0, t.index - 200);
-        const slice = text.slice(sliceStart, sliceEnd);
-        // Prefer reason after this tree id so previous-row phrases do not win
-        const forward = text.slice(t.index, sliceEnd);
+    // Prefer a trailing scientific-name list whose length matches tree count
+    let sciForTrees = [];
+    if (sciList.length >= trees.length) {
+        sciForTrees = sciList.slice(sciList.length - trees.length);
+    } else {
+        sciForTrees = sciList.slice();
+    }
+
+    for (let i = 0; i < trees.length; i++) {
+        const t = trees[i];
+        const next = trees[i + 1];
+        const parsed = parseTreeRowNear(text, t.id, t.index, next ? next.index : null);
+        const forward = parsed.forward;
+        const slice = parsed.slice;
         let reason = findRemovalReason(forward) || findRemovalReason(slice) || defaultReason;
         const extras = extractRemovalExtras(slice, text);
         if (!extras.planting && defaultExtras.planting) extras.planting = defaultExtras.planting;
@@ -822,26 +966,52 @@ function parseTreeRemovalForm(text, filename) {
         if (!extras.actual && defaultExtras.actual) extras.actual = defaultExtras.actual;
         if (!extras.remarks && defaultExtras.remarks) extras.remarks = defaultExtras.remarks;
         if (!extras.noReplaceReason && defaultExtras.noReplaceReason) extras.noReplaceReason = defaultExtras.noReplaceReason;
+
         const rowCase = (extras.remarks && /^TNS-/i.test(extras.remarks)) ? extras.remarks : caseNo;
         const estate = resolveEstate(extractEstateNear(text, t.index) || defaultEstate, t.id, rowCase) || "Unknown Estate";
-        rows.push(buildRemovalRow(
+
+        let scientific = parsed.scientific || sciForTrees[i] || "";
+        if (!scientific && parsed.chinese && CHINESE_TO_SCI[parsed.chinese]) {
+            scientific = CHINESE_TO_SCI[parsed.chinese];
+        }
+        // Prefer Chinese→sci map when list zip looks wrong (optional override if map exists)
+        if (parsed.chinese && CHINESE_TO_SCI[parsed.chinese]) {
+            scientific = CHINESE_TO_SCI[parsed.chinese];
+        }
+
+        rows.push(buildRemovalRow({
+            sn: parsed.sn,
             estate,
-            rowCase,
-            dateReceived,
-            t.id,
-            reason || "(未能自動擷取 Reason for tree removal，請手動補充)",
-            extras,
+            treeId: t.id,
+            scientific,
+            chinese: parsed.chinese,
+            height: parsed.height,
+            dbh: parsed.dbh,
+            crown: parsed.crown,
+            girth: parsed.girth,
+            amenity: parsed.amenity ? titleCaseWord(parsed.amenity) : "",
+            form: parsed.form,
+            health: parsed.health,
+            structural: parsed.structural,
+            reason: reason || "(未能自動擷取 Reason for tree removal，請手動補充)",
+            planting: extras.planting,
+            noReplaceReason: extras.noReplaceReason,
+            antRemoval: extras.antRemoval,
+            antComp: extras.antComp,
+            actual: extras.actual,
+            remarks: extras.remarks || rowCase || "",
             removalKind
-        ));
+        }));
     }
     return rows;
 }
 
 function parseReport(text, filename) {
-    text = normalizePdfText(text);
-    if (isTreeRemovalForm(text)) {
-        return parseTreeRemovalForm(text, filename);
+    const raw = String(text || "");
+    if (isTreeRemovalForm(raw) || isTreeRemovalForm(normalizePdfText(raw))) {
+        return parseTreeRemovalForm(raw, filename);
     }
+    text = normalizePdfText(raw);
     const rows = [];
     const caseNo = extractCaseNo(text, filename || "");
     const estate = extractEstate(text, filename || "");
@@ -920,25 +1090,31 @@ function renderTable() {
     const removals = removalRows();
     let html = '';
     if (audits.length) html += renderSection('TNS（Audit Report）', HEADERS_TNS, audits);
-    if (removals.length) html += renderSection('TNS_TPC & Non-TPC（Tree Removal）', HEADERS_REMOVAL, removals);
+    if (removals.length) html += renderSection('Tree Removal Summary', HEADERS_REMOVAL, removals);
     box.innerHTML = html;
 }
 
-/** TSV data rows only — no header. Empty cells still emit tabs. */
-function rowsToTsv(rows) {
-    return rows
-        .map(row => row.cells.map(cell => (cell == null ? '' : String(cell))).join('\t'))
-        .join('\n');
+/** TSV rows. Empty cells still emit tabs. */
+function rowsToTsv(rows, includeHeader, headerList) {
+    const lines = [];
+    if (includeHeader && headerList) {
+        lines.push(headerList.map(h => String(h)).join('\t'));
+    }
+    for (const row of rows) {
+        lines.push(row.cells.map(cell => (cell == null ? '' : String(cell))).join('\t'));
+    }
+    return lines.join('\n');
 }
 
-function copyKind(kind, btnId, label) {
+function copyKind(kind, btnId, label, includeHeader, headerList) {
     const rows = kind === 'audit' ? auditRows() : removalRows();
     if (!rows.length) return;
-    const text = rowsToTsv(rows);
+    const text = rowsToTsv(rows, !!includeHeader, headerList);
     const btn = document.getElementById(btnId);
     const originalLabel = btn ? btn.textContent : '';
+    const headerNote = includeHeader ? '含表頭' : '無表頭';
     navigator.clipboard.writeText(text).then(() => {
-        setStatus(`已複製 ${rows.length} 行（${label}，無表頭，可貼到 Excel）`, 'success');
+        setStatus(`已複製 ${rows.length} 行（${label}，${headerNote}，可貼到 Excel）`, 'success');
         if (btn) {
             btn.textContent = '已複製 ✓';
             setTimeout(() => { btn.textContent = originalLabel; }, 1500);
@@ -948,8 +1124,8 @@ function copyKind(kind, btnId, label) {
     });
 }
 
-function copyTns() { copyKind('audit', 'copyTnsBtn', 'TNS／Audit'); }
-function copyRemoval() { copyKind('removal', 'copyRemovalBtn', 'TPC/Non-TPC'); }
+function copyTns() { copyKind('audit', 'copyTnsBtn', 'TNS／Audit', false, null); }
+function copyRemoval() { copyKind('removal', 'copyRemovalBtn', 'Tree Removal Summary', true, HEADERS_REMOVAL); }
 
 function clearAll() {
     allRows = [];
