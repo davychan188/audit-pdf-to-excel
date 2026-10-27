@@ -50,6 +50,30 @@ check('butterfly-pdfjs', path.join(samples3, 'butterfly-pdfjs.txt'), {
   obs: ['Hanger']
 });
 
+const samplesRem = '/workspace/audit-samples-removal';
+check('non-tpc-removal-pdfjs', path.join(samplesRem, 'non-tpc-20261021-pdfjs.txt'), {
+  n: 3,
+  caseNo: 'TNS-TY-2026-002',
+  estate: 'Tai Yuen Estate',
+  date: '21/10/2026',
+  trees: ['TY-T0315', 'TY-T0571', 'TY-T1198'],
+  obs: [
+    'Dead tree (except for dead trees of particular interest)',
+    'Dead tree (except for dead trees of particular interest)',
+    'Dead tree (except for dead trees of particular interest)'
+  ]
+});
+// Extra fields for removal rows
+(() => {
+  const text = fs.readFileSync(path.join(samplesRem, 'non-tpc-20261021-pdfjs.txt'), 'utf8');
+  const rows = parseReport(text, 'Non-TPC_Tree removal summary_20261021.pdf');
+  assert(rows.every(r => r[18] === 'Yes'), 'planting Yes: ' + rows.map(r => r[18]));
+  assert(rows.every(r => r[20] === '21/11/2026'), 'antRemoval: ' + rows.map(r => r[20]));
+  assert(rows.every(r => r[21] === '21/05/2026'), 'antComp: ' + rows.map(r => r[21]));
+  assert(rows.every(r => r[22] === 'N/A'), 'actual: ' + rows.map(r => r[22]));
+  console.log('non-tpc-removal extras PASS');
+})();
+
 // Quick normalize sanity
 const n1 = normalizePdfText('AS - T NS - SM - 202 6 - 00 6');
 assert(n1.includes('AS-TNS-SM-2026-006'), 'case normalize: ' + n1);

@@ -159,9 +159,9 @@ const KNOWN_PLACES = [
     "Tin Yiu (2) Estate", "Tin Yiu (1) Estate", "Tin Shui (1) Estate", "Tin Shui (2) Estate",
     "Hoi Tai Factory Estate", "Butterfly Estate", "Kin Sang Estate", "Shek Mun Estate",
     "Chung On Estate", "Fung Wo Estate", "Lee On Estate", "Lung Hang Estate", "Lek Yuen Estate", "Ching Ho Estate",
-    "Yau Oi Estate", "Tai Hing Estate", "On Ting Estate", "Fu Tai Estate", "Shui Pin Wai Estate",
+    "Yau Oi Estate", "Tai Yuen Estate", "Tai Hing Estate", "On Ting Estate", "Fu Tai Estate", "Shui Pin Wai Estate",
     "Kam Fung", "Mei Lam", "Mei Tin", "Sun Chui", "Yan Tin", "Yan On", "Tin Yiu", "Tin Shui", "Hoi Tai Factory", "Butterfly", "Kin Sang", "Shek Mun",
-    "Chung On", "Fung Wo", "Lee On", "Lung Hang", "Lek Yuen", "Ching Ho", "Yau Oi", "Tai Hing", "On Ting", "Fu Tai", "Shui Pin Wai"
+    "Chung On", "Fung Wo", "Lee On", "Lung Hang", "Lek Yuen", "Ching Ho", "Yau Oi", "Tai Yuen", "Tai Hing", "On Ting", "Fu Tai", "Shui Pin Wai"
 ];
 
 const FILENAME_PLACE = [
@@ -175,7 +175,8 @@ const FILENAME_PLACE = [
     [/CHH|Ching\s*Ho/i, "Ching Ho Estate"],
     [/\bML\b|Mei\s*Lam/i, "Mei Lam Estate"],
     [/YO|Yau\s*Oi/i, "Yau Oi Estate"],
-    [/TH|Tai\s*Hing/i, "Tai Hing Estate"],
+    [/\bTH\b|Tai\s*Hing/i, "Tai Hing Estate"],
+    [/Tai\s*Yuen/i, "Tai Yuen Estate"],
     [/Mei\s*Lam/i, "Mei Lam Estate"],
     [/Mei\s*Tin/i, "Mei Tin Estate"],
     [/Sun\s*Chui/i, "Sun Chui Estate"],
@@ -235,6 +236,13 @@ function normalizePdfText(text) {
         if (next === t) break;
         t = next;
     }
+    // 2b) Unglue S/N↔tree / case↔S/N / N\/A / consecutive dates (table PDFs)
+    t = t.replace(/((?:AS|TNS)(?:-[A-Z0-9]+)+-\d{4}-\d{3})(\d)/gi, "$1 $2");
+    t = t.replace(/(\d)([A-Z]{1,6}\d{0,2}-[A-Z]\d{3,5})(?![0-9A-Za-z])/g, "$1 $2");
+    t = t.replace(/([A-Za-z0-9\/])((?:AS|TNS)(?:-[A-Z0-9]+)+-\d{4}-\d{3})(?![0-9])/gi, "$1 $2");
+    t = t.replace(/(\d{4})(\d{1,2}\/\d{1,2}\/\d{4})/g, "$1 $2");
+    t = t.replace(/(\d)(N\/A)\b/gi, "$1 $2");
+    t = t.replace(/\b(N\/A)(?=[A-Z0-9])/gi, "$1 ");
     // 3) Single capital + spaced lowercase word: "S hek"→"Shek", "_H anger"→"_Hanger"
     t = t.replace(/_([A-Z])\s+([a-z]+)/g, "_$1$2");
     t = t.replace(/\b([A-Z])\s+([a-z]{2,})\b/g, "$1$2");
@@ -527,13 +535,17 @@ function extractRemovalDate(text) {
 
 function extractEstateNear(text, index) {
     const start = Math.max(0, index - 120);
-    const window = text.slice(start, index + 40).replace(/\s+/g, " ");
+    // Unglue digit+Place ("26Tai Yuen") so known-place match works
+    const window = text.slice(start, index + 40).replace(/\s+/g, " ").replace(/(\d)([A-Z][a-z])/g, "$1 $2");
     for (const name of KNOWN_PLACES) {
-        const re = new RegExp("\\b" + escapeRegExp(name).replace(/ /g, "\\s+") + "(?:\\s+(Estate|Court))?\\b", "i");
+        const re = new RegExp("(?:^|[^A-Za-z])" + escapeRegExp(name).replace(/ /g, "\\s+") + "(?:\\s+(Estate|Court))?(?![A-Za-z])", "i");
         if (re.test(window)) return normalizePlace(name);
     }
-    const ec = window.match(/([A-Za-z][A-Za-z0-9]*(?:\s+[A-Za-z0-9.()]+){0,3})\s+(Estate|Court)\b/i);
-    if (ec) return normalizePlace(ec[1] + " " + ec[2]);
+    const ec = window.match(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z.()0-9]*){0,3})\s+(Estate|Court)\b/);
+    if (ec) {
+        const cleaned = normalizePlace(ec[1] + " " + ec[2]);
+        if (cleaned && !/\d/.test(cleaned) && cleaned.split(/\s+/).length <= 5) return cleaned;
+    }
     return "";
 }
 
@@ -604,16 +616,18 @@ function parseTreeRemovalForm(text, filename) {
     const defaultExtras = extractRemovalExtras(text, text);
 
     // Tree No. e.g. ML-T0419, CHH-T0551, SL1-T0231, SL1-A0048
-    const treeRe = /\b([A-Z]{1,6}\d{0,2}-[A-Z]\d{3,5})\b/g;
+    // Also accept IDs after a digit with no word boundary (pdf.js glue: 26TY-T0315)
+    const treeRe = /(?:^|[^A-Za-z])([A-Z]{1,6}\d{0,2}-[A-Z]\d{3,5})(?![0-9A-Za-z])/g;
     const seen = new Set();
     const trees = [];
     let m;
     while ((m = treeRe.exec(text)) !== null) {
         const id = m[1].toUpperCase();
         if (seen.has(id)) continue;
-        if (/^TNS-/i.test(id)) continue;
+        if (/^(?:TNS|AS)-/i.test(id)) continue;
+        const index = m.index + (m[0].length - m[1].length);
         seen.add(id);
-        trees.push({ id, index: m.index });
+        trees.push({ id, index });
     }
 
     if (trees.length === 0) {
