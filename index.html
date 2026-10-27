@@ -160,8 +160,10 @@ const KNOWN_PLACES = [
     "Hoi Tai Factory Estate", "Butterfly Estate", "Kin Sang Estate", "Shek Mun Estate",
     "Chung On Estate", "Fung Wo Estate", "Lee On Estate", "Lung Hang Estate", "Lek Yuen Estate", "Ching Ho Estate",
     "Yau Oi Estate", "Tai Yuen Estate", "Tai Hing Estate", "On Ting Estate", "Fu Tai Estate", "Shui Pin Wai Estate",
+    "Shui Chuen O Estate",
     "Kam Fung", "Mei Lam", "Mei Tin", "Sun Chui", "Yan Tin", "Yan On", "Tin Yiu", "Tin Shui", "Hoi Tai Factory", "Butterfly", "Kin Sang", "Shek Mun",
-    "Chung On", "Fung Wo", "Lee On", "Lung Hang", "Lek Yuen", "Ching Ho", "Yau Oi", "Tai Yuen", "Tai Hing", "On Ting", "Fu Tai", "Shui Pin Wai"
+    "Chung On", "Fung Wo", "Lee On", "Lung Hang", "Lek Yuen", "Ching Ho", "Yau Oi", "Tai Yuen", "Tai Hing", "On Ting", "Fu Tai", "Shui Pin Wai",
+    "Shui Chuen O"
 ];
 
 const FILENAME_PLACE = [
@@ -188,7 +190,8 @@ const FILENAME_PLACE = [
     [/FHT|Hoi\s*Tai/i, "Hoi Tai Factory Estate"],
     [/\bBE\b|Butterfly/i, "Butterfly Estate"],
     [/KSG|Kin\s*Sang/i, "Kin Sang Estate"],
-    [/\bSM\b|Shek\s*Mun/i, "Shek Mun Estate"]
+    [/\bSM\b|Shek\s*Mun/i, "Shek Mun Estate"],
+    [/Shui\s*Chuen\s*O/i, "Shui Chuen O Estate"]
 ];
 
 function escapeRegExp(s) {
@@ -241,7 +244,9 @@ function normalizePdfText(text) {
     t = t.replace(/(\d)([A-Z]{1,6}\d{0,2}-[A-Z]\d{3,5})(?![0-9A-Za-z])/g, "$1 $2");
     t = t.replace(/([A-Za-z0-9\/])((?:AS|TNS)(?:-[A-Z0-9]+)+-\d{4}-\d{3})(?![0-9])/gi, "$1 $2");
     t = t.replace(/(\d{4})(\d{1,2}\/\d{1,2}\/\d{4})/g, "$1 $2");
-    t = t.replace(/(\d)(N\/A)\b/gi, "$1 $2");
+    // Unglue dateN/A and N/AN/A (pdf.js + alphanumeric glue: 17/11/2026N/AN/A)
+    t = t.replace(/(\d)(N\/A)/gi, "$1 $2");
+    t = t.replace(/(N\/A)(?=N\/A)/gi, "$1 ");
     t = t.replace(/\b(N\/A)(?=[A-Z0-9])/gi, "$1 ");
     // 3) Single capital + spaced lowercase word: "S hek"→"Shek", "_H anger"→"_Hanger"
     t = t.replace(/_([A-Z])\s+([a-z]+)/g, "_$1$2");
@@ -557,16 +562,20 @@ function extractRemovalExtras(slice, fullText) {
     const noReplaceReason = findNoReplacementReason(slice) || findNoReplacementReason(fullText);
 
     const afterYn = yn ? slice.slice(yn.index + yn[0].length) : slice;
-    const datesAfter = [...afterYn.matchAll(/\b(\d{1,2}\/\d{1,2}\/\d{4})\b/g)].map(x => x[1]);
-    // Exclude submitted Date: value if it appears in slice
+    // Capture DMY dates and N/A tokens in order (handles glued 17/11/2026N/AN/A)
+    const tokens = [];
+    const tokRe = /(\d{1,2}\/\d{1,2}\/\d{4})|N\/A/gi;
+    let tm;
+    while ((tm = tokRe.exec(afterYn)) !== null) tokens.push(tm[0]);
     const submitted = extractRemovalDate(fullText);
-    const filtered = datesAfter.filter(d => normalizeDMY(d) !== submitted);
-
-    let antRemoval = filtered[0] ? normalizeDMY(filtered[0]) : "";
-    let antComp = filtered[1] ? normalizeDMY(filtered[1]) : "";
-    let actual = "";
-    if (/\bN\/A\b/i.test(afterYn)) actual = "N/A";
-    else if (filtered[2]) actual = normalizeDMY(filtered[2]);
+    const filtered = tokens.filter(tok => {
+        if (/^N\/A$/i.test(tok)) return true;
+        return normalizeDMY(tok) !== submitted;
+    });
+    const normTok = (tok) => /^N\/A$/i.test(tok) ? "N/A" : normalizeDMY(tok);
+    let antRemoval = filtered[0] ? normTok(filtered[0]) : "";
+    let antComp = filtered[1] ? normTok(filtered[1]) : "";
+    let actual = filtered[2] ? normTok(filtered[2]) : "";
 
     let remarks = "";
     const rem = slice.match(/\b(TNS-[A-Z0-9]+(?:-[A-Z0-9]+)*-\d{4}-\d{3})\b/i)
@@ -651,7 +660,9 @@ function parseTreeRemovalForm(text, filename) {
         // Include some context before tree id (reason text may wrap above the row)
         const sliceStart = Math.max(0, t.index - 200);
         const slice = text.slice(sliceStart, sliceEnd);
-        let reason = findRemovalReason(slice) || defaultReason;
+        // Prefer reason after this tree id so previous-row phrases do not win
+        const forward = text.slice(t.index, sliceEnd);
+        let reason = findRemovalReason(forward) || findRemovalReason(slice) || defaultReason;
         const extras = extractRemovalExtras(slice, text);
         if (!extras.planting && defaultExtras.planting) extras.planting = defaultExtras.planting;
         if (!extras.antRemoval && defaultExtras.antRemoval) extras.antRemoval = defaultExtras.antRemoval;

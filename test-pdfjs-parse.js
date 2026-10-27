@@ -74,6 +74,33 @@ check('non-tpc-removal-pdfjs', path.join(samplesRem, 'non-tpc-20261021-pdfjs.txt
   console.log('non-tpc-removal extras PASS');
 })();
 
+check('sco-20261017-pdfjs', path.join(samplesRem, 'sco-20261017-pdfjs.txt'), {
+  n: 6,
+  caseNo: 'TNS-SCO-2026-004',
+  estate: 'Shui Chuen O Estate',
+  date: '17/10/2026',
+  trees: ['SCO-A0004', 'SCO-A0005', 'SCO-A0006', 'SCO-A0007', 'SCO-A0008', 'SCO-A0009'],
+  obs: [
+    'Removal of common undesirable species',
+    'Tree removal for the purpose of woodland management',
+    'Tree removal for the purpose of woodland management',
+    'Removal of common undesirable species',
+    'Dead tree (except for dead trees of particular interest)',
+    'Removal of common undesirable species'
+  ]
+});
+(() => {
+  const text = fs.readFileSync(path.join(samplesRem, 'sco-20261017-pdfjs.txt'), 'utf8');
+  const rows = parseReport(text, 'Non-TPC_Tree removal summary_20261017.pdf');
+  assert(rows.every(r => r[18] === 'No'), 'sco planting No: ' + rows.map(r => r[18]));
+  assert(rows.every(r => r[19] === 'Steep slope (over 35 degrees)'), 'sco norep: ' + rows.map(r => r[19]));
+  assert(rows.every(r => r[20] === '17/11/2026'), 'sco antRemoval: ' + rows.map(r => r[20]));
+  assert(rows.every(r => r[21] === 'N/A'), 'sco antComp: ' + rows.map(r => r[21]));
+  assert(rows.every(r => r[22] === 'N/A'), 'sco actual: ' + rows.map(r => r[22]));
+  assert(rows.every(r => r[23] === 'TNS-SCO-2026-004'), 'sco remarks: ' + rows.map(r => r[23]));
+  console.log('sco-20261017 extras PASS');
+})();
+
 // Quick normalize sanity
 const n1 = normalizePdfText('AS - T NS - SM - 202 6 - 00 6');
 assert(n1.includes('AS-TNS-SM-2026-006'), 'case normalize: ' + n1);
