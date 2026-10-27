@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Audit Report PDF → Excel Converter（團隊共用版）</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.min.js"></script>
     <style>
         * { box-sizing: border-box; }
         body { font-family: "Segoe UI", Arial, "Microsoft JhengHei", sans-serif; margin: 0; background: #f0f2f5; color: #333; }
@@ -46,7 +45,7 @@
 <body>
 <div class="header">
     <h1>🌳 Audit Report PDF → Excel Converter</h1>
-    <div style="font-size:14px; opacity:0.9;">團隊共用工具｜拖放 PDF 自動擷取 Findings → 匯出 Master Referral List 格式</div>
+    <div style="font-size:14px; opacity:0.9;">團隊共用工具｜拖放 PDF 自動擷取 Findings → 複製表格貼到 Excel</div>
 </div>
 
 <div class="container">
@@ -72,15 +71,14 @@
     <div id="fileList" class="file-list"></div>
 
     <div class="controls">
-        <button class="btn green" id="exportBtn" onclick="exportToExcel()" disabled>📥 匯出為 Excel (.xlsx)</button>
-        <button class="btn" onclick="copyTable()" style="background:#607D8B;">📋 複製表格</button>
+        <button class="btn green" id="copyBtn" onclick="copyTable()" disabled>📋 複製表格（可貼到 Excel）</button>
         <button class="btn" onclick="clearAll()">🗑️ 清除全部</button>
     </div>
 
     <div id="tableContainer"></div>
 
     <div class="footer-note">
-        提示：PDF 必須是「可選取文字」的版本（不是純掃描圖片）。若擷取不完整，可在匯出後的 Excel 手動補充。此工具只在瀏覽器本地處理，不會上傳任何檔案。
+        提示：PDF 必須是「可選取文字」的版本（不是純掃描圖片）。擷取後按「複製表格」再貼到 Excel；若欄位不完整可在 Excel 手動補充。此工具只在瀏覽器本地處理，不會上傳任何檔案。
     </div>
 </div>
 
@@ -151,7 +149,7 @@ async function handleFiles(files) {
         }
     }
     renderTable();
-    document.getElementById('exportBtn').disabled = allRows.length === 0;
+    document.getElementById('copyBtn').disabled = allRows.length === 0;
 }
 
 const KNOWN_PLACES = [
@@ -872,53 +870,20 @@ function renderTable() {
     document.getElementById('tableContainer').innerHTML = html;
 }
 
-function exportToExcel() {
-    if (!allRows.length) return;
-    const wb = XLSX.utils.book_new();
-    const wsData = [headers, ...allRows];
-    const ws = XLSX.utils.aoa_to_sheet(wsData);
-    const colWidths = headers.map((h, i) => {
-        const max = Math.max(h.length, ...allRows.map(r => String(r[i] || '').length));
-        return { wch: Math.min(max + 2, 35) };
-    });
-    ws['!cols'] = colWidths;
-
-    const thinBorder = {
-        top: { style: "thin", color: { rgb: "000000" } },
-        bottom: { style: "thin", color: { rgb: "000000" } },
-        left: { style: "thin", color: { rgb: "000000" } },
-        right: { style: "thin", color: { rgb: "000000" } }
-    };
-    const headerStyle = {
-        font: { bold: true, color: { rgb: "FFFFFF" } },
-        fill: { patternType: "solid", fgColor: { rgb: "4CAF50" } },
-        border: thinBorder,
-        alignment: { vertical: "center", wrapText: true }
-    };
-    const bodyStyle = {
-        border: thinBorder,
-        alignment: { vertical: "center", wrapText: true }
-    };
-
-    const range = XLSX.utils.decode_range(ws['!ref']);
-    for (let R = range.s.r; R <= range.e.r; R++) {
-        for (let C = range.s.c; C <= range.e.c; C++) {
-            const addr = XLSX.utils.encode_cell({ r: R, c: C });
-            if (!ws[addr]) ws[addr] = { t: "s", v: "" };
-            ws[addr].s = R === 0 ? headerStyle : bodyStyle;
-        }
-    }
-
-    XLSX.utils.book_append_sheet(wb, ws, "Referral List");
-    const filename = `Audit_Reports_Referral_${new Date().toISOString().slice(0,10)}.xlsx`;
-    XLSX.writeFile(wb, filename);
-}
-
 function copyTable() {
     if (!allRows.length) return;
-    const text = [headers, ...allRows].map(row => row.join('\t')).join('\n');
+    // TSV: empty cells still emit tabs so Excel columns stay aligned
+    const text = [headers, ...allRows]
+        .map(row => row.map(cell => (cell == null ? '' : String(cell))).join('\t'))
+        .join('\n');
+    const btn = document.getElementById('copyBtn');
+    const originalLabel = btn ? btn.textContent : '';
     navigator.clipboard.writeText(text).then(() => {
         setStatus('已複製表格內容（可直接貼到 Excel）', 'success');
+        if (btn) {
+            btn.textContent = '已複製 ✓';
+            setTimeout(() => { btn.textContent = originalLabel; }, 1500);
+        }
     }).catch(() => {
         setStatus('複製失敗，請手動選取表格', 'error');
     });
@@ -929,7 +894,7 @@ function clearAll() {
     document.getElementById('tableContainer').innerHTML = '';
     document.getElementById('fileList').innerHTML = '';
     document.getElementById('status').innerHTML = '';
-    document.getElementById('exportBtn').disabled = true;
+    document.getElementById('copyBtn').disabled = true;
     fileInput.value = '';
 }
 
