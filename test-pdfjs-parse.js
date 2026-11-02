@@ -62,6 +62,26 @@ check('butterfly-pdfjs', path.join(samples3, 'butterfly-pdfjs.txt'), {
 
 const samplesRem = '/workspace/audit-samples-removal';
 
+
+check('longshin-pdfjs', path.join(samplesRem, 'longshin-pdfjs.txt'), {
+  n: 12,
+  kind: 'audit',
+  caseNo: 'AS-TY-LSN-2026-007',
+  estate: 'Long Shin Estate',
+  date: '27/10/2026',
+  trees: [
+    'LSN-T0424', 'LSN-T0034', 'LSN-T0420',
+    'LSN-A0001', 'LSN-A0002', 'LSN-A0003', 'LSN-A0004', 'LSN-A0005',
+    'LSN-LL1', 'LSN-LL2', 'LSN-LL3', 'LSN-LL4'
+  ],
+  obs: [
+    'Dead branch', 'Dead tree', 'Wilted crown',
+    'Dead tree', 'Dead tree', 'Dead tree', 'Dead tree', 'Dead tree',
+    'Leucaena leucocephala', 'Leucaena leucocephala', 'Leucaena leucocephala', 'Leucaena leucocephala'
+  ]
+});
+
+
 function checkRemoval(lab, file, exp) {
   const text = fs.readFileSync(file, 'utf8');
   const rows = parseReport(text, path.basename(file).replace(/\.txt$/, '') + '.pdf');
