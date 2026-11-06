@@ -284,4 +284,39 @@ assert(/BE-T0307_Hanger/.test(n3.replace(/\s+/g, '')) || /BE-T0307\s*_Hanger/.te
 })();
 
 
+
+// TPC Tree Removal Summary (Fu Tai / FTA-T0515) — pdf.js + pdftotext + layout
+(() => {
+  const exp = {
+    n: 1,
+    estate: 'Fu Tai Estate',
+    sns: ['3'],
+    trees: ['FTA-T0515'],
+    scientific: ['Albizia lebbeck'],
+    chinese: ['大葉合歡'],
+    heights: ['8'],
+    dbhs: ['347'],
+    crowns: ['7'],
+    girths: ['1090'],
+    reasons: ['Poor health'],
+    planting: 'Yes',
+    noReplace: '',
+    antRemoval: '28/11/2026',
+    antComp: '28/5/2027',
+    actual: 'N/A',
+    remarks: 'TY-FTA-2026-002'
+  };
+  for (const name of ['tpc-20261028-pdfjs.txt', 'tpc-20261028-pdftotext.txt', 'tpc-20261028-layout.txt']) {
+    checkRemoval('tpc-' + name.replace('.txt', ''), path.join(samplesRem, name), exp);
+  }
+  // Chinese→sci map alone (pdf.js order: chinese after tree, sci listed later)
+  assert(CHINESE_TO_SCI['大葉合歡'] === 'Albizia lebbeck', 'map 大葉合歡');
+  const kind = detectRemovalKind(
+    'Application to Housing Department Tree Preservation Committee (TPC) for Tree Removal under Arboricultural Maintenance',
+    'TPC_Tree_removal_summary_20261028.pdf'
+  );
+  assert(kind === 'TPC', 'detectRemovalKind TPC: ' + kind);
+  console.log('tpc-removal-suite PASS');
+})();
+
 console.log('ALL PDFJS TESTS PASSED');

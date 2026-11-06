@@ -622,7 +622,10 @@ const TREE_REMOVAL_REASONS = [
     'Dead tree (except for dead trees of particular interest)',
     'Tree removal for the purpose of woodland management',
     'Removal of common undesirable species',
-    'Imminent danger'
+    'Imminent danger',
+    'Poor health',
+    'Poor form',
+    'Poor structural condition'
 ].slice().sort((a, b) => b.length - a.length);
 
 const NO_REPLACEMENT_REASONS = [
@@ -655,17 +658,37 @@ function matchKnownPhrase(text, phrases) {
         const flex = phrase.split(/\s+/).map(escapeRegExp).join("\\s+");
         if (new RegExp(flex, "i").test(flat)) return phrase;
     }
-    // pdf.js table text may interleave other cells inside a wrapped phrase
+    // pdf.js table text may interleave other cells inside a wrapped phrase.
+    // Only loose-match longer canned reasons (4+ words) so short phrases like
+    // "Poor health" cannot false-match "Poor" … "Health condition".
     for (const phrase of phrases) {
-        const parts = phrase.split(/\s+/).map(escapeRegExp);
-        const loose = parts.join("[\\s\\S]{0,800}?");
+        const parts = phrase.split(/\s+/);
+        if (parts.length < 4) continue;
+        const loose = parts.map(escapeRegExp).join("[\\s\\S]{0,800}?");
         if (new RegExp(loose, "i").test(text)) return phrase;
     }
     return "";
 }
 
 function findRemovalReason(text) {
-    return matchKnownPhrase(text, TREE_REMOVAL_REASONS);
+    const known = matchKnownPhrase(text, TREE_REMOVAL_REASONS);
+    if (known) return known;
+    // TPC free-text cell: phrase after "Reason for tree removal" until next column header
+    const m = String(text || "").match(
+        /Reason\s+for\s+tree\s+removal\s*[:\s]*([\s\S]{0,220}?)(?=Compensatory|Replacement\s+planting|Reason\s+for\s+No|Anticipated\s+date|Actual\s+date|Remarks\b|\bYes\b|\bNo\b|$)/i
+    );
+    if (!m) return "";
+    let phrase = m[1]
+        .replace(/\b\d{1,2}\/\d{1,2}\/\d{4}\b/g, " ")
+        .replace(/\bN\/A\b/gi, " ")
+        .replace(/\b(Date|Signature|Submitted|Sean|Lee|TMS|Name|Post|Average|Good|Poor|High|Medium|Low|Condition|Form|Health|Structural|Amenity|Value|Measurements|Species|Scientific|Chinese|Girth|Crown|Spread|Size|Height|DBH)\b/gi, " ")
+        .replace(/[()（）]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    // Drop leftover header crumbs / too-short noise; do not invent reasons
+    if (!phrase || phrase.length < 3 || phrase.length > 120) return "";
+    if (/^(for|tree|removal|the|of|and|to)$/i.test(phrase)) return "";
+    return phrase;
 }
 
 function findNoReplacementReason(text) {
@@ -746,6 +769,7 @@ const CHINESE_TO_SCI = {
     "石栗": "Aleurites moluccana",
     "羊蹄甲屬": "Bauhinia spp.",
     "銀合歡": "Leucaena leucocephala",
+    "大葉合歡": "Albizia lebbeck",
     "濕地松(愛氏松)": "Pinus elliottii",
     "濕地松（愛氏松）": "Pinus elliottii",
     "濕地松": "Pinus elliottii"
@@ -766,12 +790,26 @@ function extractScientificNamesInOrder(text) {
 
 function extractRemovalExtras(slice, fullText) {
     let planting = "";
-    const yn = slice.match(/\b(Yes|No)\b/i);
-    if (yn) planting = yn[1].charAt(0).toUpperCase() + yn[1].slice(1).toLowerCase();
+    // Find Yes/No cell values; ignore "Tree No.", "Submission No.",
+    // "(Yes/No)" unit hints, and "Reason for No Replacement planting".
+    const ynRe = /\b(Yes|No)\b/gi;
+    let ym, ynMatch = null;
+    while ((ym = ynRe.exec(slice)) !== null) {
+        const before = slice.slice(Math.max(0, ym.index - 14), ym.index);
+        if (/(?:Tree|Submission)\s+$/i.test(before)) continue;
+        const local = slice.slice(Math.max(0, ym.index - 6), ym.index + ym[0].length + 6);
+        if (/\(\s*Yes\s*\/\s*No\s*\)/i.test(local)) continue;
+        if (/Reason\s+for\s+No\s+Replacement/i.test(slice.slice(Math.max(0, ym.index - 20), ym.index + 1))) continue;
+        ynMatch = ym;
+        break; // first real Yes/No cell in the row window
+    }
+    if (ynMatch) {
+        planting = ynMatch[1].charAt(0).toUpperCase() + ynMatch[1].slice(1).toLowerCase();
+    }
 
     const noReplaceReason = findNoReplacementReason(slice) || findNoReplacementReason(fullText);
 
-    const afterYn = yn ? slice.slice(yn.index + yn[0].length) : slice;
+    const afterYn = ynMatch ? slice.slice(ynMatch.index + ynMatch[0].length) : slice;
     const tokens = [];
     const tokRe = /(\d{1,2}\/\d{1,2}\/\d{4})|N\/A/gi;
     let tm;
@@ -782,10 +820,13 @@ function extractRemovalExtras(slice, fullText) {
         // Compare padded forms so 21/5/2026 ≠ submitted 21/10/2026
         return normalizeDMY(tok) !== submitted;
     });
+    // TPC often uses the same calendar day for Submitted Date and Anticipated Tree Removal.
+    // If filtering drops below 3 tokens, keep the raw post-Yes/No tokens instead.
+    const useTokens = (filtered.length >= 3 || filtered.length === tokens.length) ? filtered : tokens;
     const normTok = (tok) => /^N\/A$/i.test(tok) ? "N/A" : keepPdfDMY(tok);
-    let antRemoval = filtered[0] ? normTok(filtered[0]) : "";
-    let antComp = filtered[1] ? normTok(filtered[1]) : "";
-    let actual = filtered[2] ? normTok(filtered[2]) : "";
+    let antRemoval = useTokens[0] ? normTok(useTokens[0]) : "";
+    let antComp = useTokens[1] ? normTok(useTokens[1]) : "";
+    let actual = useTokens[2] ? normTok(useTokens[2]) : "";
 
     let remarks = "";
     const rem = slice.match(/\b(TNS-[A-Z0-9]+(?:-[A-Z0-9]+)*-\d{4}-\d{3})\b/i)
@@ -889,18 +930,34 @@ function parseTreeRowNear(text, treeId, index, nextIndex) {
     let chinese = "";
     let height = "", dbh = "", crown = "", girth = "";
     let amenity = "", form = "", health = "", structural = "";
+    let scientific = "";
 
-    // pdf.js compact row: TREE 中文 H DBH Crown Girth Amenity Form Health Structural …
-    const compact = forward.match(
-        new RegExp(
-            escapeRegExp(treeId) +
-            "\\s+([\\u4e00-\\u9fff（）()]+)\\s+" +
-            "(\\d+(?:\\.\\d+)?)\\s+(\\d+)\\s+(\\d+(?:\\.\\d+)?)\\s+(\\d+)\\s+" +
-            "(High|Medium|Low)\\s+(Good|Average|Poor)\\s+(Good|Average|Poor)\\s+(Good|Average|Poor)",
-            "i"
-        )
+    const cjkRun = "([\\u4e00-\\u9fff]+(?:[（(][\\u4e00-\\u9fff]+[）)])?)";
+    const sciRun = "([A-Z][a-z]{2,}\\s+(?:spp\\.|[a-z]{3,}))";
+    const measTail =
+        "(\\d+(?:\\.\\d+)?)\\s+(\\d+)\\s+(\\d+(?:\\.\\d+)?)\\s+(\\d+)\\s+" +
+        "(High|Medium|Low)\\s+(Good|Average|Poor)\\s+(Good|Average|Poor)\\s+(Good|Average|Poor)";
+
+    // TPC layout / pdf.js: TREE Scientific Chinese H DBH Crown Girth Amenity Form Health Structural
+    const compactSci = forward.match(
+        new RegExp(escapeRegExp(treeId) + "\\s+" + sciRun + "\\s+" + cjkRun + "\\s+" + measTail, "i")
     );
-    if (compact) {
+    // Non-TPC pdf.js compact: TREE 中文 H DBH Crown Girth Amenity Form Health Structural
+    const compact = forward.match(
+        new RegExp(escapeRegExp(treeId) + "\\s+" + cjkRun + "\\s+" + measTail, "i")
+    );
+    if (compactSci) {
+        scientific = compactSci[1].replace(/\s+/g, " ").trim();
+        chinese = compactSci[2];
+        height = compactSci[3];
+        dbh = compactSci[4];
+        crown = compactSci[5];
+        girth = compactSci[6];
+        amenity = compactSci[7];
+        form = titleCaseWord(compactSci[8]);
+        health = titleCaseWord(compactSci[9]);
+        structural = titleCaseWord(compactSci[10]);
+    } else if (compact) {
         chinese = compact[1];
         height = compact[2];
         dbh = compact[3];
@@ -911,9 +968,23 @@ function parseTreeRowNear(text, treeId, index, nextIndex) {
         health = titleCaseWord(compact[8]);
         structural = titleCaseWord(compact[9]);
     } else {
-        // pdftotext / looser: Chinese then four numbers somewhere after tree id
-        const cjk = forward.match(/([\u4e00-\u9fff（）()]{1,20})/);
+        // Require real CJK (do not grab bare "(" from Height (m) / (mm) / (Yes / No))
+        const cjk = forward.match(new RegExp(cjkRun));
         if (cjk) chinese = cjk[1];
+
+        // Scientific immediately after Tree No. (TPC row order)
+        const sciPost = forward.match(
+            new RegExp("^" + escapeRegExp(treeId) + "\\s+" + sciRun, "i")
+        );
+        if (sciPost) scientific = sciPost[1].replace(/\s+/g, " ").trim();
+        if (!scientific) {
+            const sciNear = forward.match(new RegExp(sciRun));
+            if (sciNear && !/^(Estate|Project|Tree|Name|Chinese|Sean|Lee)$/i.test(sciNear[1].split(/\s+/)[0])) {
+                scientific = sciNear[1].replace(/\s+/g, " ").trim();
+            }
+        }
+
+        // Contiguous four measurements before Amenity
         const nums = forward.match(/(\d+(?:\.\d+)?)\s+(\d+)\s+(\d+(?:\.\d+)?)\s+(\d+)\s+(High|Medium|Low)/i);
         if (nums) {
             height = nums[1];
@@ -922,35 +993,67 @@ function parseTreeRowNear(text, treeId, index, nextIndex) {
             girth = nums[4];
             amenity = nums[5];
         } else {
-            // pdf.js may glue Height/DBH/Crown/Girth: 83105973 Low
-            const glued = forward.match(/(\d{7,12})\s*(High|Medium|Low)/i);
-            if (glued) {
-                const p = splitGluedMeasurements(glued[1]);
-                if (p) {
-                    height = p.height;
-                    dbh = p.dbh;
-                    crown = p.crown;
-                    girth = p.girth;
-                    amenity = glued[2];
+            // TPC pdftotext: Height/DBH/Crown early, Girth later before Amenity headers
+            const loose = forward.match(
+                /(\d+(?:\.\d+)?)\s+(\d+)\s+(\d+(?:\.\d+)?)[\s\S]{0,350}?(\d{3,4})\s+(?:Girth[\s\S]{0,80}?)?(High|Medium|Low)/i
+            );
+            // Prefer: three nums after Chinese, then a girth-sized int before Amenity
+            const afterZh = chinese
+                ? forward.slice(forward.search(new RegExp(escapeRegExp(chinese))))
+                : forward;
+            const three = afterZh.match(/(\d+(?:\.\d+)?)\s+(\d+)\s+(\d+(?:\.\d+)?)/);
+            // Skip parenthesized header units like (High/Medium/Low)
+            const amen = afterZh.match(/(?<![\/\(])\b(High|Medium|Low)\b(?!\s*\/)/i);
+            let gGuess = "";
+            if (three && amen) {
+                const mid = afterZh.slice(three.index + three[0].length, amen.index);
+                const gm = mid.match(/\b(\d{3,4})\b/);
+                if (gm) gGuess = gm[1];
+            }
+            if (three && gGuess && amen) {
+                height = three[1];
+                dbh = three[2];
+                crown = three[3];
+                girth = gGuess;
+                amenity = amen[1];
+            } else if (loose) {
+                height = loose[1];
+                dbh = loose[2];
+                crown = loose[3];
+                girth = loose[4];
+                amenity = loose[5];
+            } else {
+                // pdf.js may glue Height/DBH/Crown/Girth: 83105973 Low
+                const glued = forward.match(/(\d{7,12})\s*(High|Medium|Low)/i);
+                if (glued) {
+                    const p = splitGluedMeasurements(glued[1]);
+                    if (p) {
+                        height = p.height;
+                        dbh = p.dbh;
+                        crown = p.crown;
+                        girth = p.girth;
+                        amenity = glued[2];
+                    }
                 }
             }
         }
         const cond = forward.match(/\b(High|Medium|Low)\s+(Good|Average|Poor)\s+(Good|Average|Poor)\s+(Good|Average|Poor)\b/i);
         if (cond) {
-            amenity = amenity || cond[1];
+            // Prefer the value quadruple over a header remnant like "(High/Medium/Low)"
+            amenity = cond[1];
             form = titleCaseWord(cond[2]);
             health = titleCaseWord(cond[3]);
             structural = titleCaseWord(cond[4]);
         }
-        // Scientific name often sits just before Tree No. in layout text
     }
 
-    // Scientific name immediately before tree id (pdftotext column layout)
-    let scientific = "";
-    const pre = text.slice(Math.max(0, index - 120), index);
-    const sciPre = pre.match(/\b([A-Z][a-z]{2,})\s+(spp\.|[a-z]{3,})\s*$/);
-    if (sciPre && !/^(Estate|Project|Tree|Name|Chinese)$/i.test(sciPre[1])) {
-        scientific = `${sciPre[1]} ${sciPre[2]}`;
+    // Scientific name immediately before tree id (some Non-TPC layouts)
+    if (!scientific) {
+        const pre = text.slice(Math.max(0, index - 120), index);
+        const sciPre = pre.match(/\b([A-Z][a-z]{2,})\s+(spp\.|[a-z]{3,})\s*$/);
+        if (sciPre && !/^(Estate|Project|Tree|Name|Chinese)$/i.test(sciPre[1])) {
+            scientific = `${sciPre[1]} ${sciPre[2]}`;
+        }
     }
 
     return {
