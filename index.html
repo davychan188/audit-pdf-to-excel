@@ -464,7 +464,7 @@ function extractEstate(text, filename) {
         if (ed) raw = ed[1];
     }
     if (!raw) {
-        const ed2 = text.match(/Estate\s*\/\s*(?:District\s*:)?\s*([A-Za-z][A-Za-z0-9\s()]+?(?:Estate|Court))/i);
+        const ed2 = text.match(/Estate\s*\/\s*(?:District\s*:|Project)?\s*([A-Za-z][A-Za-z0-9\s()]+?(?:Estate|Court))/i);
         if (ed2) raw = ed2[1];
     }
     let estate = normalizePlace(raw);
@@ -671,12 +671,33 @@ function matchKnownPhrase(text, phrases) {
 }
 
 function findRemovalReason(text) {
-    const known = matchKnownPhrase(text, TREE_REMOVAL_REASONS);
-    if (known) return known;
+    const src = String(text || "");
+    const cellRe = /Reason\s+for\s+tree\s+removal\s*[:\s]*([\s\S]{0,220}?)(?=Compensatory|Replacement\s+planting|Reason\s+for\s+No|Anticipated\s+date|Actual\s+date|Remarks\b|\bYes\b|\bNo\b|$)/i;
+    const cell = src.match(cellRe);
+    // Prefer the reason cell so a Health value "Poor" sitting against the
+    // "Structural condition" header cannot outrank "Poor health".
+    if (cell) {
+        const knownInCell = matchKnownPhrase(cell[1], TREE_REMOVAL_REASONS);
+        if (knownInCell) return knownInCell;
+    }
+    const known = matchKnownPhrase(src, TREE_REMOVAL_REASONS);
+    if (known) {
+        const flex = known.split(/\s+/).map(escapeRegExp).join("\\s+");
+        const re = new RegExp(flex, "gi");
+        let hm, seenExact = false, keep = false;
+        while ((hm = re.exec(src)) !== null) {
+            seenExact = true;
+            const after = src.slice(hm.index + hm[0].length, hm.index + hm[0].length + 40);
+            // Header remnant: "Poor Structural condition (Good/Average/Poor)"
+            if (/^\s*\(\s*(Good|Average|Poor)\b/i.test(after)) continue;
+            keep = true;
+            break;
+        }
+        // Loose-matched canned reasons (words interleaved in pdf.js) have no exact span — keep them.
+        if (keep || !seenExact) return known;
+    }
     // TPC free-text cell: phrase after "Reason for tree removal" until next column header
-    const m = String(text || "").match(
-        /Reason\s+for\s+tree\s+removal\s*[:\s]*([\s\S]{0,220}?)(?=Compensatory|Replacement\s+planting|Reason\s+for\s+No|Anticipated\s+date|Actual\s+date|Remarks\b|\bYes\b|\bNo\b|$)/i
-    );
+    const m = cell || src.match(cellRe);
     if (!m) return "";
     let phrase = m[1]
         .replace(/\b\d{1,2}\/\d{1,2}\/\d{4}\b/g, " ")
@@ -735,15 +756,45 @@ function keepPdfDMY(s) {
     return `${String(Number(m[1]))}/${String(Number(m[2]))}/${m[3]}`;
 }
 
+/** Tree No. on Tree Removal forms: FTA-T0515, SCO-A0004, LSN-LL1, or prefix-digits SPWA-0058 (optional spaces around the hyphen).
+ *  Do not reuse this in Audit Findings extractors — PREFIX-digits would invent IDs from case numbers like TY-SPWA-2026-001.
+ */
+const REMOVAL_TREE_ID_BODY = "(?:[A-Z]{1,6}\\d{0,2}\\s*-\\s*(?:LL\\s*\\d{1,2}|[A-Z]\\s*\\d{3,5})|[A-Z]{2,6}\\s*-\\s*\\d{3,5})";
+
+function isValidRemovalTreeId(id) {
+    const n = String(id || "").replace(/\s+/g, "").toUpperCase();
+    if (/^[A-Z]{1,6}\d{0,2}-(?:LL\d{1,2}|[A-Z]\d{3,5})$/.test(n)) return true;
+    if (/^[A-Z]{2,6}-\d{3,5}$/.test(n)) return true;
+    return false;
+}
+
+function extractRemovalTreeIds(text) {
+    const re = new RegExp("(?:^|[^A-Za-z-])(" + REMOVAL_TREE_ID_BODY + ")(?![0-9A-Za-z-])", "g");
+    const seen = new Set();
+    const trees = [];
+    let m;
+    while ((m = re.exec(text)) !== null) {
+        const id = m[1].replace(/\s+/g, "").toUpperCase();
+        if (!isValidRemovalTreeId(id)) continue;
+        if (/^(?:TNS|AS)-/i.test(id)) continue;
+        if (seen.has(id)) continue;
+        const index = m.index + (m[0].length - m[1].length);
+        seen.add(id);
+        trees.push({ id, index });
+    }
+    return trees;
+}
+
 function normalizeRemovalPdfText(text) {
     let t = String(text || "");
     t = t.replace(/\s*-\s*/g, "-");
     t = t.replace(/\s*\/\s*/g, "/");
-    // Underscore tree IDs → hyphen (same as normalizePdfText)
+    // Underscore tree IDs → hyphen (letter/LL suffix, or prefix-digits like SPWA_0058)
     t = t.replace(/\b([A-Z]{1,6}\d{0,2})_(LL\d{1,2}|[A-Z]\d{3,5})(?=_|\b)/gi, "$1-$2");
+    t = t.replace(/\b([A-Z]{2,6})_(\d{3,5})(?=_|\b)/gi, "$1-$2");
     // Do NOT glue digit↔digit (would smash Height/DBH/Crown/Girth)
-    // Unglue S/N stuck to Tree No.
-    t = t.replace(/(\d)([A-Z]{1,6}\d{0,2}-(?:LL\d{1,2}|[A-Z]\d{3,5}))(?![0-9A-Za-z])/g, "$1 $2");
+    // Unglue S/N stuck to Tree No. (FTA-T0515 or SPWA-0058); do not split case numbers (TY-SPWA-2026-001)
+    t = t.replace(new RegExp("(\\d)(" + REMOVAL_TREE_ID_BODY + ")(?![0-9A-Za-z-])", "gi"), "$1 $2");
     // Unglue measurement stuck to Amenity / Yes|No / letters
     t = t.replace(/(\d{7,12})(High|Medium|Low)\b/gi, (m, digs, am) => {
         const p = splitGluedMeasurements(digs);
@@ -770,6 +821,7 @@ const CHINESE_TO_SCI = {
     "羊蹄甲屬": "Bauhinia spp.",
     "銀合歡": "Leucaena leucocephala",
     "大葉合歡": "Albizia lebbeck",
+    "血桐": "Macaranga tanarius var. tomentosa",
     "濕地松(愛氏松)": "Pinus elliottii",
     "濕地松（愛氏松）": "Pinus elliottii",
     "濕地松": "Pinus elliottii"
@@ -797,9 +849,13 @@ function extractRemovalExtras(slice, fullText) {
     while ((ym = ynRe.exec(slice)) !== null) {
         const before = slice.slice(Math.max(0, ym.index - 14), ym.index);
         if (/(?:Tree|Submission)\s+$/i.test(before)) continue;
-        const local = slice.slice(Math.max(0, ym.index - 6), ym.index + ym[0].length + 6);
-        if (/\(\s*Yes\s*\/\s*No\s*\)/i.test(local)) continue;
-        if (/Reason\s+for\s+No\s+Replacement/i.test(slice.slice(Math.max(0, ym.index - 20), ym.index + 1))) continue;
+        // Skip only the Yes/No tokens that themselves sit inside "(Yes/No)" (or a mid-slice "/No)")
+        const prevYn = slice.slice(Math.max(0, ym.index - 8), ym.index);
+        const nextYn = slice.slice(ym.index + ym[0].length, ym.index + ym[0].length + 8);
+        if (/^yes$/i.test(ym[1]) && /\(\s*$/.test(prevYn) && /^\s*\/\s*No\s*\)/i.test(nextYn)) continue;
+        if (/^no$/i.test(ym[1]) && /\/\s*$/.test(prevYn) && /^\s*\)/.test(nextYn)) continue;
+        const aroundYn = slice.slice(Math.max(0, ym.index - 24), ym.index + ym[0].length + 24);
+        if (/Reason\s+for\s+No\s+Replacement/i.test(aroundYn)) continue;
         ynMatch = ym;
         break; // first real Yes/No cell in the row window
     }
@@ -933,7 +989,7 @@ function parseTreeRowNear(text, treeId, index, nextIndex) {
     let scientific = "";
 
     const cjkRun = "([\\u4e00-\\u9fff]+(?:[（(][\\u4e00-\\u9fff]+[）)])?)";
-    const sciRun = "([A-Z][a-z]{2,}\\s+(?:spp\\.|[a-z]{3,}))";
+    const sciRun = "([A-Z][a-z]{2,}\\s+(?:spp\\.|[a-z]{3,}(?:\\s+(?:var\\.|subsp\\.)\\s+[a-z]+)?))";
     const measTail =
         "(\\d+(?:\\.\\d+)?)\\s+(\\d+)\\s+(\\d+(?:\\.\\d+)?)\\s+(\\d+)\\s+" +
         "(High|Medium|Low)\\s+(Good|Average|Poor)\\s+(Good|Average|Poor)\\s+(Good|Average|Poor)";
@@ -973,13 +1029,16 @@ function parseTreeRowNear(text, treeId, index, nextIndex) {
         if (cjk) chinese = cjk[1];
 
         // Scientific immediately after Tree No. (TPC row order)
+        const sciSkip = /^(Estate|Project|Tree|Name|Chinese|Sean|Lee|Signature|Submitted|Measurements|Species|Scientific)$/i;
         const sciPost = forward.match(
             new RegExp("^" + escapeRegExp(treeId) + "\\s+" + sciRun, "i")
         );
-        if (sciPost) scientific = sciPost[1].replace(/\s+/g, " ").trim();
+        if (sciPost && !sciSkip.test(sciPost[1].split(/\s+/)[0])) {
+            scientific = sciPost[1].replace(/\s+/g, " ").trim();
+        }
         if (!scientific) {
             const sciNear = forward.match(new RegExp(sciRun));
-            if (sciNear && !/^(Estate|Project|Tree|Name|Chinese|Sean|Lee)$/i.test(sciNear[1].split(/\s+/)[0])) {
+            if (sciNear && !sciSkip.test(sciNear[1].split(/\s+/)[0])) {
                 scientific = sciNear[1].replace(/\s+/g, " ").trim();
             }
         }
@@ -1023,8 +1082,25 @@ function parseTreeRowNear(text, treeId, index, nextIndex) {
                 girth = loose[4];
                 amenity = loose[5];
             } else {
+                // TPC pdftotext: Height alone after Chinese ("血桐 7 Signature … 315 7 989 Amenity")
+                if (chinese) {
+                    const hOnly = afterZh.match(new RegExp(escapeRegExp(chinese) + "\\s+(\\d+(?:\\.\\d+)?)\\b"));
+                    const rest = hOnly ? afterZh.slice(hOnly.index + hOnly[0].length) : "";
+                    const later = rest.match(/(\d{2,4})\s+(\d+(?:\.\d+)?)\s+(\d{3,4})(?=[\s\S]{0,220}?(?<![\/\(])\b(?:High|Medium|Low)\b(?!\s*\/))/);
+                    const amenV = rest.match(/(?<![\/\(])\b(High|Medium|Low)\b(?!\s*\/)/i);
+                    if (hOnly && later && amenV) {
+                        const H = Number(hOnly[1]), D = Number(later[1]), C = Number(later[2]), G = Number(later[3]);
+                        if (H >= 1 && H <= 50 && D >= 20 && D <= 2500 && C >= 1 && C <= 40 && G >= 50 && G <= 8000) {
+                            height = hOnly[1];
+                            dbh = later[1];
+                            crown = later[2];
+                            girth = later[3];
+                            amenity = amenV[1];
+                        }
+                    }
+                }
                 // pdf.js may glue Height/DBH/Crown/Girth: 83105973 Low
-                const glued = forward.match(/(\d{7,12})\s*(High|Medium|Low)/i);
+                const glued = !height ? forward.match(/(\d{7,12})\s*(High|Medium|Low)/i) : null;
                 if (glued) {
                     const p = splitGluedMeasurements(glued[1]);
                     if (p) {
@@ -1044,13 +1120,23 @@ function parseTreeRowNear(text, treeId, index, nextIndex) {
             form = titleCaseWord(cond[2]);
             health = titleCaseWord(cond[3]);
             structural = titleCaseWord(cond[4]);
+        } else {
+            // TPC pdftotext may insert the Structural header between Health and Structural values:
+            // "Medium Average Poor Structural condition (Good/Average/Poor) Average Poor health"
+            const condSplit = forward.match(/\b(High|Medium|Low)\s+(Good|Average|Poor)\s+(Good|Average|Poor)(?:\s+Structural\s+condition(?:\s*\([^)]{0,60}\))?)?(?:\s+Reason\s+for\s+tree\s+removal)?\s+(Good|Average|Poor)\b/i);
+            if (condSplit) {
+                amenity = condSplit[1];
+                form = titleCaseWord(condSplit[2]);
+                health = titleCaseWord(condSplit[3]);
+                structural = titleCaseWord(condSplit[4]);
+            }
         }
     }
 
     // Scientific name immediately before tree id (some Non-TPC layouts)
     if (!scientific) {
         const pre = text.slice(Math.max(0, index - 120), index);
-        const sciPre = pre.match(/\b([A-Z][a-z]{2,})\s+(spp\.|[a-z]{3,})\s*$/);
+        const sciPre = pre.match(/\b([A-Z][a-z]{2,})\s+(spp\.|[a-z]{3,}(?:\s+(?:var\.|subsp\.)\s+[a-z]+)?)\s*$/);
         if (sciPre && !/^(Estate|Project|Tree|Name|Chinese)$/i.test(sciPre[1])) {
             scientific = `${sciPre[1]} ${sciPre[2]}`;
         }
@@ -1078,18 +1164,7 @@ function parseTreeRemovalForm(text, filename) {
     const defaultExtras = extractRemovalExtras(text, text);
     const sciList = extractScientificNamesInOrder(text);
 
-    const treeRe = /(?:^|[^A-Za-z])([A-Z]{1,6}\d{0,2}-(?:LL\d{1,2}|[A-Z]\d{3,5}))(?![0-9A-Za-z])/g;
-    const seen = new Set();
-    const trees = [];
-    let m;
-    while ((m = treeRe.exec(text)) !== null) {
-        const id = m[1].toUpperCase();
-        if (seen.has(id)) continue;
-        if (/^(?:TNS|AS)-/i.test(id)) continue;
-        const index = m.index + (m[0].length - m[1].length);
-        seen.add(id);
-        trees.push({ id, index });
-    }
+    const trees = extractRemovalTreeIds(text);
 
     if (trees.length === 0) {
         if (defaultReason || defaultEstate || caseNo) {

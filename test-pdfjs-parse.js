@@ -99,8 +99,12 @@ function checkRemoval(lab, file, exp) {
   assert(c.map(r => r[6]).join(',') === exp.dbhs.join(','), `${lab}: dbhs`);
   assert(c.map(r => r[7]).join(',') === exp.crowns.join(','), `${lab}: crowns`);
   assert(c.map(r => r[8]).join(',') === exp.girths.join(','), `${lab}: girths`);
-  assert(c.every(r => r[9] === 'Low'), `${lab}: amenity`);
-  assert(c.every(r => r[10] === 'Poor' && r[11] === 'Poor' && r[12] === 'Poor'), `${lab}: conditions`);
+  const amenity = exp.amenity || 'Low';
+  const form = exp.form || 'Poor';
+  const health = exp.health || 'Poor';
+  const structural = exp.structural || 'Poor';
+  assert(c.every(r => r[9] === amenity), `${lab}: amenity ${c.map(r => r[9])}`);
+  assert(c.every(r => r[10] === form && r[11] === health && r[12] === structural), `${lab}: conditions ${c.map(r => [r[10], r[11], r[12]])}`);
   assert(c.map(r => r[13]).join('|') === exp.reasons.join('|'), `${lab}: reasons`);
   assert(c.every(r => r[14] === exp.planting), `${lab}: planting ${c.map(r => r[14])}`);
   if (exp.noReplace != null) {
@@ -317,6 +321,53 @@ assert(/BE-T0307_Hanger/.test(n3.replace(/\s+/g, '')) || /BE-T0307\s*_Hanger/.te
   );
   assert(kind === 'TPC', 'detectRemovalKind TPC: ' + kind);
   console.log('tpc-removal-suite PASS');
+})();
+
+
+// TPC Tree Removal Summary (Kwong Fuk / SPWA-0058) — prefix-digits Tree No., var. scientific, Medium/Average
+(() => {
+  const exp = {
+    n: 1,
+    estate: 'Kwong Fuk Estate',
+    sns: ['6'],
+    trees: ['SPWA-0058'],
+    scientific: ['Macaranga tanarius var. tomentosa'],
+    chinese: ['血桐'],
+    heights: ['7'],
+    dbhs: ['315'],
+    crowns: ['7'],
+    girths: ['989'],
+    amenity: 'Medium',
+    form: 'Average',
+    health: 'Poor',
+    structural: 'Average',
+    reasons: ['Poor health'],
+    planting: 'Yes',
+    noReplace: 'Leave growing space for existing trees nearby',
+    antRemoval: '4/12/2026',
+    antComp: '4/5/2027',
+    actual: 'N/A',
+    remarks: 'TY-SPWA-2026-001'
+  };
+  const files = ['tpc-20261103-pdftotext.txt', 'tpc-20261103-layout.txt', 'tpc-20261103-pdfjs.txt'];
+  for (const name of files) {
+    checkRemoval('tpc-' + name.replace('.txt', ''), path.join(samplesRem, name), exp);
+  }
+  assert(CHINESE_TO_SCI['血桐'] === 'Macaranga tanarius var. tomentosa', 'map 血桐');
+  assert(isValidRemovalTreeId('SPWA-0058'), 'SPWA-0058 is a removal Tree No.');
+  assert(isValidRemovalTreeId('SPWA - 0058'), 'SPWA - 0058 spaced');
+  assert(isValidRemovalTreeId('FTA-T0515'), 'FTA-T0515 still valid');
+  assert(isValidRemovalTreeId('SCO-A0004'), 'SCO-A0004 still valid');
+  assert(isValidRemovalTreeId('LSN-LL1'), 'LSN-LL1 still valid');
+  assert(!isValidTreeId('SPWA-0058'), 'Findings validator stays strict (no prefix-digits)');
+  const invented = extractRemovalTreeIds('Remarks TY-SPWA-2026-001 TNS-TY-2026-002');
+  assert(invented.length === 0, 'must not invent Tree No. from case numbers: ' + JSON.stringify(invented));
+  const kind = detectRemovalKind(
+    'Application to Housing Department Tree Preservation Committee (TPC) for Tree Removal under Arboricultural Maintenance',
+    'TPC_Tree_removal_summary_20261103.pdf'
+  );
+  assert(kind === 'TPC', 'detectRemovalKind TPC 20261103: ' + kind);
+  console.log('tpc-20261103-removal-suite PASS');
 })();
 
 console.log('ALL PDFJS TESTS PASSED');
