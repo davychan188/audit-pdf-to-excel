@@ -51,7 +51,7 @@
 <body>
 <div class="header">
     <h1>🌳 Audit Report PDF → Excel Converter</h1>
-    <div style="font-size:14px; opacity:0.9;">團隊共用工具｜拖放 PDF 自動擷取 → 複製貼到 Excel（Audit→TNS／Removal→Tree Removal Summary）</div>
+    <div style="font-size:14px; opacity:0.9;">團隊共用工具｜拖放 PDF 自動擷取 → 複製貼到 Excel（Audit／TMU→TNS／Removal→Tree Removal Summary）</div>
 </div>
 
 <div class="container">
@@ -62,8 +62,9 @@
         3. 需要網路連線（載入 PDF 解析功能）<br>
         4. 支援一次拖入多份報告（Chung On、Fung Wo、Kam Fung、Lee On、Lung Hang、Lek Yuen、Yau Oi、Tai Hing 等）<br>
         5. 亦支援 <strong>Tree Removal under Arboricultural Maintenance</strong> → 輸出 <strong>Tree Removal Summary</strong> 20 欄<br>
-        6. 複製分兩掣：<strong>複製 TNS（Audit）</strong>（18 欄、無表頭）／<strong>複製 Tree Removal Summary</strong>（20 欄、無表頭）<br>
-        7. 亦可下載本頁的 HTML 檔案離線分享（Email、Teams、共用資料夾）
+        6. 亦支援 <strong>TMU Site Check Report（TMU-Form-03）</strong> → 輸出 TNS（Source = TMU，Case deadline = Date Received + 14 日）<br>
+        7. 複製分兩掣：<strong>複製 TNS（Audit／TMU）</strong>（18 欄、無表頭）／<strong>複製 Tree Removal Summary</strong>（20 欄、無表頭）<br>
+        8. 亦可下載本頁的 HTML 檔案離線分享（Email、Teams、共用資料夾）
     </div>
 
     <div class="drop-zone" id="dropZone">
@@ -78,7 +79,7 @@
     <div id="fileList" class="file-list"></div>
 
     <div class="controls">
-        <button class="btn green" id="copyTnsBtn" onclick="copyTns()" disabled>📋 複製 TNS（Audit）</button>
+        <button class="btn green" id="copyTnsBtn" onclick="copyTns()" disabled>📋 複製 TNS（Audit／TMU）</button>
         <button class="btn orange" id="copyRemovalBtn" onclick="copyRemoval()" disabled>📋 複製 Tree Removal Summary</button>
         <button class="btn" onclick="clearAll()">🗑️ 清除全部</button>
     </div>
@@ -86,16 +87,16 @@
     <div id="tableContainer"></div>
 
     <div class="footer-note">
-        提示：PDF 必須是「可選取文字」的版本（不是純掃描圖片）。Audit 複製<strong>不含表頭</strong>（對齊 Master Referral List › TNS）；Tree Removal 複製<strong>不含表頭</strong>（對齊 Tree Removal Summary）。此工具只在瀏覽器本地處理，不會上傳任何檔案。
+        提示：PDF 必須是「可選取文字」的版本（不是純掃描圖片）。TNS（Audit／TMU Site Check）複製<strong>不含表頭</strong>（對齊 Master Referral List › TNS）；Tree Removal 複製<strong>不含表頭</strong>（對齊 Tree Removal Summary）。此工具只在瀏覽器本地處理，不會上傳任何檔案。
     </div>
 </div>
 
 <script>
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-let allRows = []; // { kind: 'audit'|'removal', cells: string[], extras?: object }
+let allRows = []; // { kind: 'audit'|'tmu'|'removal', cells: string[], extras?: object }
 
-// Master Referral List › sheet TNS (18 cols) — Audit Report / AS routine
+// Master Referral List › sheet TNS (18 cols) — Audit Report / AS routine / TMU Site Check
 const HEADERS_TNS = [
     "Source of Referral", "Estate", "Case No.", "Date Received", "Tree ID", "Observation",
     "Mitigation", "Inspection Date", "Date informed EMO upon inspection",
@@ -175,7 +176,7 @@ const KNOWN_PLACES = [
     "Tin Yiu (2) Estate", "Tin Yiu (1) Estate", "Tin Shui (1) Estate", "Tin Shui (2) Estate",
     "Hoi Tai Factory Estate", "Butterfly Estate", "Kin Sang Estate", "Shek Mun Estate",
     "Chung On Estate", "Fung Wo Estate", "Lee On Estate", "Lung Hang Estate", "Lek Yuen Estate", "Ching Ho Estate",
-    "Yau Oi Estate", "Tai Yuen Estate", "Tai Hing Estate", "On Ting Estate", "Fu Tai Estate", "Shui Pin Wai Estate",
+    "Yau Oi Estate", "Tai Yuen Estate", "Tai Hing Estate", "On Ting Estate", "On Yam Estate", "Fu Tai Estate", "Shui Pin Wai Estate",
     "Shui Chuen O Estate", "Ching Tin Estate", "Leung King Estate", "Lung Yat Estate", "Po Tin Estate",
     "Sam Shing Estate", "Tin King Estate", "Wo Tin Estate", "Wu King Estate", "Hung Fuk Estate",
     "Long Ching Estate", "Long Shin Estate", "Tin Chak Estate", "Tin Ching Estate", "Tin Heng Estate",
@@ -187,7 +188,7 @@ const KNOWN_PLACES = [
     "Fu Heng Estate", "Fu Shin Estate", "Fu Tip Estate", "Kwong Fuk Estate", "Po Heung Estate",
     "Tai Wo Estate", "Wan Tau Tong Estate",
     "Kam Fung", "Mei Lam", "Mei Tin", "Sun Chui", "Yan Tin", "Yan On", "Tin Yiu", "Tin Shui", "Hoi Tai Factory", "Butterfly", "Kin Sang", "Shek Mun",
-    "Chung On", "Fung Wo", "Lee On", "Lung Hang", "Lek Yuen", "Ching Ho", "Yau Oi", "Tai Yuen", "Tai Hing", "On Ting", "Fu Tai", "Shui Pin Wai",
+    "Chung On", "Fung Wo", "Lee On", "Lung Hang", "Lek Yuen", "Ching Ho", "Yau Oi", "Tai Yuen", "Tai Hing", "On Ting", "On Yam", "Fu Tai", "Shui Pin Wai",
     "Shui Chuen O", "Ching Tin", "Leung King", "Lung Yat", "Po Tin", "Sam Shing", "Tin King", "Wo Tin", "Wu King",
     "Hung Fuk", "Long Ching", "Long Shin", "Tin Chak", "Tin Ching", "Tin Heng", "Tin Tsz", "Tin Wah", "Tin Yan", "Tin Yat", "Tin Yuet",
     "San Wai", "Cheung Lung Wai", "Cheung Wah", "Choi Po", "Choi Yuen", "Fai Ming", "Ka Fuk", "Po Shek Wu", "Tin Ping", "Wah Sum",
@@ -220,7 +221,8 @@ const FILENAME_PLACE = [
     [/\bBE\b|Butterfly/i, "Butterfly Estate"],
     [/KSG|Kin\s*Sang/i, "Kin Sang Estate"],
     [/\bSM\b|Shek\s*Mun/i, "Shek Mun Estate"],
-    [/Shui\s*Chuen\s*O/i, "Shui Chuen O Estate"]
+    [/Shui\s*Chuen\s*O/i, "Shui Chuen O Estate"],
+    [/On\s*Yam/i, "On Yam Estate"]
 ];
 
 const TREE_PREFIX_ESTATE = {
@@ -232,6 +234,7 @@ const TREE_PREFIX_ESTATE = {
     "LKG": "Leung King Estate",
     "LKY": "Lung Yat Estate",
     "OT": "On Ting Estate",
+    "OY": "On Yam Estate",
     "POT": "Po Tin Estate",
     "SS": "Sam Shing Estate",
     "TH": "Tai Hing Estate",
@@ -1248,8 +1251,222 @@ function parseTreeRemovalForm(text, filename) {
     return rows;
 }
 
+
+function isTmuSiteCheckForm(text) {
+    const t = String(text || "");
+    return /TMU\s*-?\s*Form\s*-?\s*03/i.test(t)
+        || /TMU\s*Site\s+Check\s+Report/i.test(t)
+        || /TMU\s*Referral\s+Case\s*No/i.test(t);
+}
+
+/** Add calendar days to D/M/YYYY and emit unpadded D/M/YYYY (e.g. 2/11/2026, 16/11/2026). */
+function addDaysUnpadded(dmy, days) {
+    const m = String(dmy || "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!m) return "";
+    const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]) + Number(days));
+    if (isNaN(d.getTime())) return "";
+    return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
+}
+
+function formatUnpaddedDMY(day, month, year) {
+    const d = Number(day), mo = Number(month), y = Number(year);
+    if (!d || !mo || !y || d < 1 || d > 31 || mo < 1 || mo > 12 || y < 1990 || y > 2100) return "";
+    return `${d}/${mo}/${y}`;
+}
+
+function extractTmuCaseNo(text, filename) {
+    const trySrc = (src) => {
+        const m = String(src || "").match(/(?:^|[^A-Z0-9])(TMU(?:\s*-\s*[A-Z]{1,6})+\s*-\s*\d{2}\s*\d{2}\s*-\s*\d{3})(?![0-9])/i);
+        return m ? m[1].replace(/\s+/g, "").toUpperCase() : "";
+    };
+    const fromText = trySrc(normalizePdfText(text || "")) || trySrc(text || "");
+    if (fromText) return fromText;
+    return trySrc(normalizePdfText(filename || "")) || trySrc(filename || "");
+}
+
+function extractTmuDate(text) {
+    const blobs = [String(text || ""), normalizePdfText(text || "")];
+    for (const src of blobs) {
+        // pdf.js may glue the year to the hour: "11 . 11 .202614:"
+        const glued = src.match(/\b(\d{1,2})\s*[./]\s*(\d{1,2})\s*[./]\s*(\d{4})([01]\d|2[0-3])\s*:/);
+        if (glued) {
+            const out = formatUnpaddedDMY(glued[1], glued[2], glued[3]);
+            if (out) return out;
+        }
+        // 11.11.2026 / 11/11/2026 / 11 . 11 .202 6
+        const re = /\b(\d{1,2})\s*[./]\s*(\d{1,2})\s*[./]\s*(\d{2})\s*(\d{2})\b/g;
+        let m;
+        while ((m = re.exec(src)) !== null) {
+            const out = formatUnpaddedDMY(m[1], m[2], m[3] + m[4]);
+            if (out) return out;
+        }
+    }
+    return "";
+}
+
+function normalizeTmuPdfText(text) {
+    let t = normalizePdfText(text || "");
+    // pdf.js / column layout glue Tree ID to Finding, Photo, or the time column
+    t = t.replace(/([A-Z]{1,6}\d{0,2}-(?:LL\d{1,2}|[A-Z]\d{3,4}))(\d{1,2}:[0-5]\d)/gi, "$1 $2");
+    t = t.replace(/([A-Z]{1,6}\d{0,2}-(?:LL\d{1,2}|[A-Z]\d{3,5}))(?=Photo|Finding|Recommendation|Estate|Overview|Date)/gi, "$1 ");
+    t = t.replace(/\bEs\s+tate\b/g, "Estate");
+    for (let i = 0; i < 5; i++) {
+        const next = t.replace(/([A-Za-z]{2,})\s+([A-Za-z])\s+([A-Za-z]{2,})/g, "$1$2$3");
+        if (next === t) break;
+        t = next;
+    }
+    t = t.replace(/[ \t]+/g, " ");
+    return t;
+}
+
+function cleanupTmuClause(raw) {
+    let t = String(raw || "");
+    t = t.replace(/[\u0000-\u001f\u0085\u2028\u2029]/g, " ");
+    t = t.replace(/\bEs\s+tate\b/g, "Estate");
+    for (let i = 0; i < 5; i++) {
+        const next = t.replace(/([A-Za-z]{2,})\s+([A-Za-z])\s+([A-Za-z]{2,})/g, "$1$2$3");
+        if (next === t) break;
+        t = next;
+    }
+    t = t.replace(/\s+/g, " ").trim();
+    t = t.replace(/\s*(?:Overview\b|TMU-Form-\d+|TMU\s*-?\s*Form\s*-?\s*\d+|Date\s*\/\s*Time|Estate\s*\/\s*Region|Findings\s+and\s+Recommendation|Photo\s*\(?\s*with|Photo\s*\(with|Inspection Officer|Contract reference|Mitigation Required)\b.*$/i, "").trim();
+    t = t.replace(/\s*(?:Yes\s*\/\s*No\s*\*?|Routine Maintenance\s*\/\s*Tree Works\s*\*?)\s*$/i, "").trim();
+    t = t.replace(/\s+\d{1,2}\s*$/, "").trim();
+    t = t.replace(/^[:.\-\s]+/, "").replace(/[:.\-\s]+$/, "").trim();
+    return t;
+}
+
+function compactTmuLetters(s) {
+    return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+/** Drop a photo caption that repeats the Finding, even if pdf.js split letters. */
+function stripTmuTrailingEcho(rec, finding) {
+    const findC = compactTmuLetters(finding);
+    if (!findC || findC.length < 8) {
+        const idx = String(rec || "").toLowerCase().indexOf(String(finding || "").toLowerCase());
+        if (idx > 0) return cleanupTmuClause(rec.slice(0, idx));
+        if (idx === 0) return "";
+        return rec;
+    }
+    const recC = compactTmuLetters(rec);
+    const cIdx = recC.indexOf(findC);
+    if (cIdx === 0) return "";
+    if (cIdx > 0) {
+        let letters = 0;
+        for (let i = 0; i < rec.length; i++) {
+            if (/[a-z0-9]/i.test(rec[i])) {
+                if (letters === cIdx) return cleanupTmuClause(rec.slice(0, i));
+                letters++;
+            }
+        }
+    }
+    return rec;
+}
+
+function extractTmuTrees(text) {
+    const flat = normalizeTmuPdfText(text).replace(/\r/g, "").replace(/\n+/g, " ");
+    const idRe = /(?:^|[^0-9])(\d{1,2})\.\s*([A-Z]{1,6}\d{0,2}-(?:LL\d{1,2}|[A-Z]\d{3,5}))(?![0-9A-Za-z])/gi;
+    const hits = [];
+    let m;
+    while ((m = idRe.exec(flat)) !== null) {
+        const treeId = normalizeTreeId(m[2]);
+        if (!isValidTreeId(treeId)) continue;
+        hits.push({ treeId, index: m.index, end: m.index + m[0].length });
+    }
+    const seen = new Set();
+    const uniqueHits = [];
+    for (const h of hits) {
+        if (seen.has(h.treeId)) continue;
+        seen.add(h.treeId);
+        uniqueHits.push(h);
+    }
+    const trees = [];
+    for (let i = 0; i < uniqueHits.length; i++) {
+        const start = uniqueHits[i].end;
+        const stop = i + 1 < uniqueHits.length ? uniqueHits[i + 1].index : flat.length;
+        const block = flat.slice(start, stop);
+        let finding = "";
+        const fm = block.match(/Finding\s*:\s*([\s\S]*?)(?=\s*Recommendation\s*:|$)/i);
+        if (fm) finding = cleanupTmuClause(fm[1]);
+        let rec = "";
+        const rm = block.match(/Recommendation\s*:\s*([\s\S]*)$/i);
+        if (rm) rec = cleanupTmuClause(rm[1]);
+        if (finding && rec) rec = stripTmuTrailingEcho(rec, finding);
+        trees.push({ treeId: uniqueHits[i].treeId, finding, rec });
+    }
+    return trees;
+}
+
+function extractTmuEstate(text, filename, treeId, caseNo) {
+    const blob = normalizeTmuPdfText(text) + "\n" + String(text || "");
+    for (const name of KNOWN_PLACES) {
+        const re = new RegExp("\\b" + escapeRegExp(name).replace(/ /g, "\\s+") + "(?:\\s+(Estate|Court))?\\b", "i");
+        if (re.test(blob)) {
+            const est = normalizePlace(name);
+            if (!isWeakEstate(est)) return est;
+        }
+    }
+    let estate = extractEstate(blob, filename || "");
+    if (estate) estate = estate.replace(/^(?:Region|Estate\s*\/\s*Region|District)\s+/i, "").trim();
+    if (estate && /on\s+yam/i.test(estate)) estate = "On Yam Estate";
+    return resolveEstate(estate, treeId, caseNo) || estate || "";
+}
+
+function parseTmuSiteCheckForm(text, filename) {
+    const raw = String(text || "");
+    const caseNo = extractTmuCaseNo(raw, filename || "");
+    const dateReceived = extractTmuDate(raw);
+    const deadline = dateReceived ? addDaysUnpadded(dateReceived, 14) : "";
+    const trees = extractTmuTrees(raw);
+    const estateText = extractTmuEstate(raw, filename || "", (trees[0] && trees[0].treeId) || "", caseNo);
+    const rows = [];
+    for (const t of trees) {
+        const rowEstate = resolveEstate(estateText, t.treeId, caseNo) || "Unknown Estate";
+        rows.push({
+            kind: "tmu",
+            cells: [
+                "TMU",
+                rowEstate,
+                caseNo,
+                dateReceived,
+                t.treeId,
+                t.finding || "",
+                t.rec || "",
+                "",
+                "",
+                deadline,
+                "", "", "", "", "", "", "", ""
+            ]
+        });
+    }
+    if (rows.length === 0 && (caseNo || estateText || dateReceived)) {
+        const rowEstate = resolveEstate(estateText, "", caseNo) || "Unknown Estate";
+        rows.push({
+            kind: "tmu",
+            cells: [
+                "TMU",
+                rowEstate,
+                caseNo,
+                dateReceived,
+                "",
+                "(未能自動擷取 Findings，請手動補充)",
+                "",
+                "",
+                "",
+                deadline,
+                "", "", "", "", "", "", "", ""
+            ]
+        });
+    }
+    return rows;
+}
+
 function parseReport(text, filename) {
     const raw = String(text || "");
+    if (isTmuSiteCheckForm(raw) || isTmuSiteCheckForm(normalizePdfText(raw))) {
+        return parseTmuSiteCheckForm(raw, filename);
+    }
     if (isTreeRemovalForm(raw) || isTreeRemovalForm(normalizePdfText(raw))) {
         return parseTreeRemovalForm(raw, filename);
     }
@@ -1299,7 +1516,7 @@ function parseReport(text, filename) {
     return rows;
 }
 
-function auditRows() { return allRows.filter(r => r.kind === 'audit'); }
+function auditRows() { return allRows.filter(r => r.kind === 'audit' || r.kind === 'tmu'); }
 function removalRows() { return allRows.filter(r => r.kind === 'removal'); }
 
 function updateCopyButtons() {
@@ -1331,7 +1548,7 @@ function renderTable() {
     const audits = auditRows();
     const removals = removalRows();
     let html = '';
-    if (audits.length) html += renderSection('TNS（Audit Report）', HEADERS_TNS, audits);
+    if (audits.length) html += renderSection('TNS（Audit Report / TMU Site Check）', HEADERS_TNS, audits);
     if (removals.length) html += renderSection('Tree Removal Summary', HEADERS_REMOVAL, removals);
     box.innerHTML = html;
 }
@@ -1366,7 +1583,7 @@ function copyKind(kind, btnId, label, includeHeader, headerList) {
     });
 }
 
-function copyTns() { copyKind('audit', 'copyTnsBtn', 'TNS／Audit', false, null); }
+function copyTns() { copyKind('audit', 'copyTnsBtn', 'TNS／Audit／TMU', false, null); }
 function copyRemoval() { copyKind('removal', 'copyRemovalBtn', 'Tree Removal Summary', false, HEADERS_REMOVAL); } // includeHeader=false
 
 function clearAll() {

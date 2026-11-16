@@ -370,4 +370,77 @@ assert(/BE-T0307_Hanger/.test(n3.replace(/\s+/g, '')) || /BE-T0307\s*_Hanger/.te
   console.log('tpc-20261103-removal-suite PASS');
 })();
 
+
+function checkTmu(lab, file, filename) {
+  const text = fs.readFileSync(file, "utf8");
+  assert(!isTreeRemovalForm(text), `${lab}: must not be Tree Removal`);
+  assert(isTmuSiteCheckForm(text) || isTmuSiteCheckForm(normalizePdfText(text)), `${lab}: detect TMU-Form-03`);
+  const rows = parseReport(text, filename || path.basename(file) + ".pdf");
+  assert(rows.length === 2, `${lab}: expected 2 rows, got ${rows.length}`);
+  assert(rows.every(r => r.kind === "tmu"), `${lab}: kind ${rows[0] && rows[0].kind}`);
+  assert(rows.every(r => r.cells.length === 18), `${lab}: 18 cols`);
+  const c = rows.map(r => r.cells);
+  const exp = [
+    ["TMU", "On Yam Estate", "TMU-OY-2026-004", "11/11/2026", "OY-T0034",
+      "Conflict with building was found", "Crown reduction is required", "", "", "25/11/2026"],
+    ["TMU", "On Yam Estate", "TMU-OY-2026-004", "11/11/2026", "OY-T0051",
+      "Preparation work for processing planter enlargement", "Crown thining within Nov is required", "", "", "25/11/2026"]
+  ];
+  console.log(lab, c.map(r => ({ src: r[0], estate: r[1], case: r[2], date: r[3], tree: r[4], obs: r[5], mit: r[6], deadline: r[9] })));
+  for (let i = 0; i < 2; i++) {
+    for (let j = 0; j < 10; j++) {
+      assert(c[i][j] === exp[i][j], `${lab}: row ${i} col ${j} expected ${JSON.stringify(exp[i][j])} got ${JSON.stringify(c[i][j])}`);
+    }
+    assert(c[i].slice(10).every(x => x === ""), `${lab}: cols 11-18 empty`);
+  }
+  assert(c[1][6].includes("thining"), `${lab}: keep PDF typo thining`);
+  assert(!c[1][6].includes("thinning"), `${lab}: must not auto-correct thining`);
+  console.log(lab, "PASS");
+}
+
+checkTmu("tmu-oy-pdftotext", path.join(samplesRem, "tmu-oy-2026-004-pdftotext.txt"), "tmu-ty-2026-003.pdf");
+checkTmu("tmu-oy-layout", path.join(samplesRem, "tmu-oy-2026-004-layout.txt"), "tmu-ty-2026-003.pdf");
+checkTmu("tmu-oy-pdfjs", path.join(samplesRem, "tmu-oy-2026-004-pdfjs.txt"), "tmu-ty-2026-003.pdf");
+
+(() => {
+  const syn = [
+    "TMU-Form-03",
+    "TMU Site Check Report on Performance of TS Contractor/ AS Consultant",
+    "TMU Referral Case No. (if applicable): TMU-TY-2026-003",
+    "Date / Time  2.11.2026  14:50-15:25",
+    "Tai Yuen Estate",
+    "1. TY-T0010",
+    "Finding:",
+    "Poor health"
+  ].join("\n");
+  const rows = parseReport(syn, "unused-name.pdf");
+  assert(rows.length === 1, "tmu-syn n " + rows.length);
+  assert(rows[0].kind === "tmu", "tmu-syn kind");
+  assert(rows[0].cells.join("\t") === [
+    "TMU", "Tai Yuen Estate", "TMU-TY-2026-003", "2/11/2026", "TY-T0010",
+    "Poor health", "", "", "", "16/11/2026", "", "", "", "", "", "", "", ""
+  ].join("\t"), "tmu-syn row: " + rows[0].cells.join("|"));
+  assert(addDaysUnpadded("11/11/2026", 14) === "25/11/2026", "deadline 11/11+14");
+  assert(addDaysUnpadded("2/11/2026", 14) === "16/11/2026", "deadline 2/11+14");
+  assert(addDaysUnpadded("18/11/2026", 14) === "2/12/2026", "deadline 18/11+14 unpadded");
+  assert(estateFromTreeId("OY-T0034") === "On Yam Estate", "prefix OY");
+  assert(estateFromCaseNo("TMU-OY-2026-004") === "On Yam Estate", "case OY");
+  assert(isValidTreeId("OY-T0034") && isValidTreeId("OY-T0051"), "OY tree ids valid");
+  assert(!isValidTreeId("TMU-OY-2026-004"), "case no is not a tree id");
+  const invented = extractTmuTrees("TMU Referral Case No.: TMU-OY-2026-004");
+  assert(invented.length === 0, "must not invent tree from TMU case no: " + JSON.stringify(invented));
+  console.log("tmu-synthetic-and-helpers PASS");
+})();
+
+// AS Audit rows must keep Case deadline empty
+(() => {
+  const text = fs.readFileSync(path.join(samples3, "shekmun-pdfjs.txt"), "utf8");
+  const rows = parseReport(text, "AS-TNS-SM-2026-006.pdf");
+  assert(rows.every(r => r.kind === "audit"), "audit still audit");
+  assert(rows.every(r => r.cells[0] === "AS"), "Source stays AS");
+  assert(rows.every(r => r.cells[9] === ""), "AS Case deadline stays empty: " + rows.map(r => r.cells[9]));
+  assert(rows.every(r => r.cells[6] === ""), "AS Mitigation stays empty");
+  console.log("audit-deadline-empty PASS");
+})();
+
 console.log('ALL PDFJS TESTS PASSED');
