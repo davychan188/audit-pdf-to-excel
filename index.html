@@ -175,7 +175,7 @@ const KNOWN_PLACES = [
     "Kwai Chung 1 Estate", "Kwai Chung 2 Estate", "Shatin Pass Estate",
     "Kam Fung Court", "Mei Lam Estate", "Mei Tin Estate", "Sun Chui Estate", "Yan On Estate", "Yan Tin Estate",
     "Tin Yiu (2) Estate", "Tin Yiu (1) Estate", "Tin Shui (1) Estate", "Tin Shui (2) Estate",
-    "Hoi Tai Factory Estate", "Butterfly Estate", "Kin Sang Estate", "Shek Mun Estate",
+    "Hoi Tai Factory Estate", "Butterfly Estate", "Kin Sang Estate", "Shek Mun Estate", "Shek Yam Estate",
     "Chung On Estate", "Fung Wo Estate", "Lee On Estate", "Lung Hang Estate", "Lek Yuen Estate", "Ching Ho Estate",
     "Yau Oi Estate", "Tai Yuen Estate", "Tai Hing Estate", "On Ting Estate", "On Yam Estate", "Fu Tai Estate", "Shui Pin Wai Estate",
     "Shui Chuen O Estate", "Ching Tin Estate", "Leung King Estate", "Lung Yat Estate", "Po Tin Estate",
@@ -189,7 +189,7 @@ const KNOWN_PLACES = [
     "Fu Heng Estate", "Fu Shin Estate", "Fu Tip Estate", "Kwong Fuk Estate", "Po Heung Estate",
     "Tai Wo Estate", "Wan Tau Tong Estate",
     "Kwai Chung 1", "Kwai Chung 2", "Shatin Pass",
-    "Kam Fung", "Mei Lam", "Mei Tin", "Sun Chui", "Yan Tin", "Yan On", "Tin Yiu", "Tin Shui", "Hoi Tai Factory", "Butterfly", "Kin Sang", "Shek Mun",
+    "Kam Fung", "Mei Lam", "Mei Tin", "Sun Chui", "Yan Tin", "Yan On", "Tin Yiu", "Tin Shui", "Hoi Tai Factory", "Butterfly", "Kin Sang", "Shek Mun", "Shek Yam",
     "Chung On", "Fung Wo", "Lee On", "Lung Hang", "Lek Yuen", "Ching Ho", "Yau Oi", "Tai Yuen", "Tai Hing", "On Ting", "On Yam", "Fu Tai", "Shui Pin Wai",
     "Shui Chuen O", "Ching Tin", "Leung King", "Lung Yat", "Po Tin", "Sam Shing", "Tin King", "Wo Tin", "Wu King",
     "Hung Fuk", "Long Ching", "Long Shin", "Tin Chak", "Tin Ching", "Tin Heng", "Tin Tsz", "Tin Wah", "Tin Yan", "Tin Yat", "Tin Yuet",
@@ -223,6 +223,7 @@ const FILENAME_PLACE = [
     [/\bBE\b|Butterfly/i, "Butterfly Estate"],
     [/KSG|Kin\s*Sang/i, "Kin Sang Estate"],
     [/\bSM\b|Shek\s*Mun/i, "Shek Mun Estate"],
+    [/Shek\s*Yam|TMU[_-]?SY[_-]|_SY(?:[_.-]|$)/i, "Shek Yam Estate"],
     [/Shui\s*Chuen\s*O/i, "Shui Chuen O Estate"],
     [/On\s*Yam/i, "On Yam Estate"]
 ];
@@ -292,6 +293,7 @@ const TREE_PREFIX_ESTATE = {
     "PH": "Pok Hong Estate",
     "SK": "Sha Kok Estate",
     "SM": "Shek Mun Estate",
+    "SY": "Shek Yam Estate",
     "SCO": "Shui Chuen O Estate",
     "HSW": "Sui Wo Court",
     "SC": "Sun Chui Estate",
@@ -1508,12 +1510,26 @@ function tmuItemTreeId(label) {
     return "";
 }
 
+function isTmuDateFurnitureLabel(label) {
+    const t = String(label || "").trim();
+    if (!t) return false;
+    // pdf.js date/time leftovers, e.g. "202616: 00-16 : 30Shek Yam"
+    if (/^\d{4,}/.test(t)) return true;
+    if (/\d{4}\s*:\s*\d{2}/.test(t)) return true;
+    if (/\b\d{1,2}:\d{2}\s*-\s*\d{1,2}\s*:\s*\d{2}/.test(t)) return true;
+    return false;
+}
+
 function extractTmuTrees(text) {
     const flat = normalizeTmuPdfText(text).replace(/\r/g, "").replace(/\n+/g, " ");
     const itemRe = /(?:^|[^0-9])(\d{1,2})\.\s+/g;
     const hits = [];
     let m;
     while ((m = itemRe.exec(flat)) !== null) {
+        const after = flat.slice(m.index + m[0].length);
+        // "11. 2026..." / "11. 11.2026" are the inspection date, not finding item 11
+        if (/^20\d{2}/.test(after)) continue;
+        if (/^\d{1,2}\s*[./]\s*(?:20\d{2}|\d{2,4}\b)/.test(after)) continue;
         hits.push({ n: Number(m[1]), index: m.index, end: m.index + m[0].length });
     }
     const seen = new Set();
@@ -1536,6 +1552,7 @@ function extractTmuTrees(text) {
         else labelRaw = block;
         const label = cleanupTmuItemLabel(labelRaw);
         if (!label) continue;
+        if (isTmuDateFurnitureLabel(label) && !tmuItemTreeId(label)) continue;
         const treeId = tmuItemTreeId(label) || label;
         let finding = "";
         const fm = block.match(/Finding\s*:\s*([\s\S]*?)(?=\s*Recommendation\s*:|$)/i);
@@ -1585,21 +1602,36 @@ function extractTmuEstateCell(text) {
     const blob = repairTmuGluedPhrases(normalizeTmuPdfText(text) + "\n" + String(text || ""));
     const badName = /^(?:Time|Date|Findings?|Recommendation|Photo|Overview|Region|District|DETAILS|Inspection|Officer|Contract|Works|Mitigation|Name|Post)$/i;
     const badCode = /^(?:Region|District|Findings?|Recommendation|Photo|Time|Date|Overview|Form|Issued|DETAILS|Consultant|Contractor|Maintenance|Works)$/i;
+    const isBadEstateName = (name) => {
+        const n = String(name || "").trim();
+        if (!n || badName.test(n)) return true;
+        const first = n.split(/\s+/)[0];
+        return !!(first && badName.test(first));
+    };
     if (/Shatin\s+Pass(?:\s+\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2})?\s+Estate\s*\/\s*WTT\b/i.test(blob)) {
         return "Shatin Pass Estate";
     }
     if (/On\s+Yam(?:\s+\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2})?\s+Estate\s*\/\s*KC\b/i.test(blob)) {
         return "On Yam Estate";
     }
+    // "Shek Yam" may sit in a different column from "Estate / KC" (layout / pdf.js)
+    if (/Shek\s+Yam[\s\S]{0,180}?Estate\s*\/\s*KC\b/i.test(blob)) {
+        return "Shek Yam Estate";
+    }
     // Kwai Chung can be split from "1 Estate / KC" by the tree-id / time columns
     const kc = blob.match(/Kwai\s+Chung[\s\S]{0,180}?([12])\s+Estate\s*\/\s*KC\b/i);
     if (kc) return normalizeTmuEstateName("Kwai Chung " + kc[1] + " Estate");
-    const re = /\b((?:Shatin\s+Pass|Kwai\s+Chung\s+[12]|On\s+Yam|[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z0-9]+){0,3}))(?:\s+\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2})?\s+(Estate|Court)\s*\/\s*([A-Z]{1,6}\d{0,2})\b/gi;
+    const re = /\b((?:Shatin\s+Pass|Kwai\s+Chung\s+[12]|On\s+Yam|Shek\s+Yam|[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z0-9]+){0,3}))(?:\s+\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2})?\s+(Estate|Court)\s*\/\s*([A-Z]{1,6}\d{0,2})\b/gi;
     let m;
     while ((m = re.exec(blob)) !== null) {
-        if (badName.test(m[1].trim()) || badCode.test(m[3])) continue;
+        // Do not let "Region Shek Yam Estate / KC" consume the real name; retry one character later
+        if (isBadEstateName(m[1]) || badCode.test(m[3])) {
+            re.lastIndex = m.index + 1;
+            continue;
+        }
         const est = normalizeTmuEstateName(m[1] + " " + m[2]);
         if (est && !isWeakTmuEstate(est)) return est;
+        re.lastIndex = m.index + 1;
     }
     return "";
 }
@@ -1612,7 +1644,8 @@ function extractTmuEstateFromHeader(text) {
         [/Shatin\s+Pass(?:\s+Estate)?/i, "Shatin Pass Estate"],
         [/Kwai\s+Chung\s*1(?:\s+Estate)?/i, "Kwai Chung 1 Estate"],
         [/Kwai\s+Chung\s*2(?:\s+Estate)?/i, "Kwai Chung 2 Estate"],
-        [/On\s+Yam(?:\s+Estate)?/i, "On Yam Estate"]
+        [/On\s+Yam(?:\s+Estate)?/i, "On Yam Estate"],
+        [/Shek\s+Yam(?:\s+Estate)?/i, "Shek Yam Estate"]
     ];
     for (const [re, name] of specific) {
         if (re.test(header)) return name;

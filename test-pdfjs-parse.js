@@ -429,6 +429,8 @@ checkTmu("tmu-oy-pdfjs", path.join(samplesRem, "tmu-oy-2026-004-pdfjs.txt"), "tm
   assert(estateFromCaseNo("TMU-SPA-2026-003") === "Shatin Pass Estate", "case SPA");
   assert(estateFromCaseNo("TMU-KC1-2026-004") === "Kwai Chung 1 Estate", "case KC1");
   assert(estateFromCaseNo("TMU-KC2-2026-004") === "Kwai Chung 2 Estate", "case KC2");
+  assert(estateFromCaseNo("TMU-SY-2026-004") === "Shek Yam Estate", "case SY");
+  assert(estateFromTreeId("SY-T0001") === "Shek Yam Estate", "prefix SY");
   assert(estateFromTreeId("KC-T1344") === "", "bare KC prefix must not map to one estate");
   assert(isValidTreeId("OY-T0034") && isValidTreeId("OY-T0051"), "OY tree ids valid");
   assert(isValidTreeId("SPA-T0136") && isValidTreeId("KC-T1344"), "SPA/KC tree ids valid");
@@ -503,10 +505,18 @@ const tmuKc2 = [
     "Dead tree was found", "Apply for tree removal", "", "", "13/11/2026"]
 ];
 
+const tmuSy = [
+  ["TMU", "Shek Yam Estate", "TMU-SY-2026-004", "11/11/2026", "All Ficus spp",
+    "Phauda flammans (Pf) infestation was found",
+    "EMO please note the following actions; Keep a closer look on the Ficus spp. trees, even for those with no record of infestation",
+    "", "", "25/11/2026"]
+];
+
 const tmuForms = [
   ["tmu-spa", "TMU_Form-03_SPA-2026-003", "TMU_Form-03_SPA-2026-003.pdf", tmuSpa],
   ["tmu-kc1", "TMU_Form-03_202610_KC1", "TMU_Form-03_202610_KC1.pdf", tmuKc1],
-  ["tmu-kc2", "TMU_Form-03_KC_multi", "TMU_Form-03_KC_multi.pdf", tmuKc2]
+  ["tmu-kc2", "TMU_Form-03_KC_multi", "TMU_Form-03_KC_multi.pdf", tmuKc2],
+  ["tmu-sy", "TMU_Form-03_SY-2026-004", "TMU-Form-03_TMU Site Check Report (issued 05-22)_202611_SY.pdf", tmuSy]
 ];
 for (const [lab, stem, filename, exp] of tmuForms) {
   for (const kind of ["pdftotext", "layout", "pdfjs"]) {
