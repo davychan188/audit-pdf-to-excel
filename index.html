@@ -172,6 +172,7 @@ async function handleFiles(files) {
 }
 
 const KNOWN_PLACES = [
+    "Kwai Chung 1 Estate", "Kwai Chung 2 Estate", "Shatin Pass Estate",
     "Kam Fung Court", "Mei Lam Estate", "Mei Tin Estate", "Sun Chui Estate", "Yan On Estate", "Yan Tin Estate",
     "Tin Yiu (2) Estate", "Tin Yiu (1) Estate", "Tin Shui (1) Estate", "Tin Shui (2) Estate",
     "Hoi Tai Factory Estate", "Butterfly Estate", "Kin Sang Estate", "Shek Mun Estate",
@@ -187,6 +188,7 @@ const KNOWN_PLACES = [
     "Pok Hong Estate", "Sha Kok Estate", "Sui Wo Court", "Sun Tin Wai Estate", "Wo Che Estate",
     "Fu Heng Estate", "Fu Shin Estate", "Fu Tip Estate", "Kwong Fuk Estate", "Po Heung Estate",
     "Tai Wo Estate", "Wan Tau Tong Estate",
+    "Kwai Chung 1", "Kwai Chung 2", "Shatin Pass",
     "Kam Fung", "Mei Lam", "Mei Tin", "Sun Chui", "Yan Tin", "Yan On", "Tin Yiu", "Tin Shui", "Hoi Tai Factory", "Butterfly", "Kin Sang", "Shek Mun",
     "Chung On", "Fung Wo", "Lee On", "Lung Hang", "Lek Yuen", "Ching Ho", "Yau Oi", "Tai Yuen", "Tai Hing", "On Ting", "On Yam", "Fu Tai", "Shui Pin Wai",
     "Shui Chuen O", "Ching Tin", "Leung King", "Lung Yat", "Po Tin", "Sam Shing", "Tin King", "Wo Tin", "Wu King",
@@ -235,6 +237,9 @@ const TREE_PREFIX_ESTATE = {
     "LKY": "Lung Yat Estate",
     "OT": "On Ting Estate",
     "OY": "On Yam Estate",
+    "SPA": "Shatin Pass Estate",
+    "KC1": "Kwai Chung 1 Estate",
+    "KC2": "Kwai Chung 2 Estate",
     "POT": "Po Tin Estate",
     "SS": "Sam Shing Estate",
     "TH": "Tai Hing Estate",
@@ -364,7 +369,7 @@ function normalizePlace(raw) {
         }
     }
     // Keep parentheses e.g. Tin Yiu (2) Estate
-    const ec = s.match(/^([A-Za-z]+(?:\s+[A-Za-z]+)*(?:\s*\(\d+\))?)\s+(Estate|Court)\b/i);
+    const ec = s.match(/^([A-Za-z]+(?:\s+[A-Za-z]+)*(?:\s*\(\d+\)|\s+\d+)?)\s+(Estate|Court)\b/i);
     if (ec) {
         const base = ec[1].replace(/\s+/g, " ").trim();
         const suf = ec[2].charAt(0).toUpperCase() + ec[2].slice(1).toLowerCase();
@@ -400,6 +405,8 @@ function normalizePdfText(text) {
     t = t.replace(/\b([A-Z])\s+([a-z]{2,})\b/g, "$1$2");
     // 4) Normalize leftover spaces
     t = t.replace(/[ \t]+/g, " ");
+    // 5) Unglue "1Estate" / "2Court" created by alphanumeric glue
+    t = t.replace(/(\d)(Estate|Court)\b/g, "$1 $2");
     return t;
 }
 
@@ -1276,7 +1283,7 @@ function formatUnpaddedDMY(day, month, year) {
 
 function extractTmuCaseNo(text, filename) {
     const trySrc = (src) => {
-        const m = String(src || "").match(/(?:^|[^A-Z0-9])(TMU(?:\s*-\s*[A-Z]{1,6})+\s*-\s*\d{2}\s*\d{2}\s*-\s*\d{3})(?![0-9])/i);
+        const m = String(src || "").match(/(?:^|[^A-Z0-9])(TMU\s*-\s*[A-Z]{1,6}\d{0,2}\s*-\s*\d{2}\s*\d{2}\s*-\s*\d{3})(?![0-9])/i);
         return m ? m[1].replace(/\s+/g, "").toUpperCase() : "";
     };
     const fromText = trySrc(normalizePdfText(text || "")) || trySrc(text || "");
@@ -1304,17 +1311,115 @@ function extractTmuDate(text) {
     return "";
 }
 
+const TMU_STOP_WORDS = new Set([
+    "a", "an", "as", "at", "be", "by", "do", "if", "in", "is", "it", "no", "of", "on", "or", "so", "to",
+    "up", "we", "and", "are", "but", "for", "not", "the", "was", "were", "with", "from", "into", "out",
+    "off", "per", "via", "yes", "nov", "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "oct", "dec",
+    "emo", "tmu", "alm", "as", "ts", "kc", "wtt"
+]);
+
+const TMU_JOIN_WORDS = new Set([
+    "was", "were", "with", "found", "foliage", "branches", "branch", "fronds", "frond", "tree", "trees",
+    "climber", "crown", "observed", "required", "assessment", "removal", "cleaning", "reduction",
+    "building", "conflict", "preparation", "processing", "planter", "enlargement", "thining", "thinning",
+    "pruning", "works", "carried", "deal", "dead", "undersized", "undesirable", "species", "slope",
+    "facing", "apply", "arrange", "please", "conduct", "risk", "recommendation", "finding", "maintenance",
+    "routine", "within", "health", "poor", "remove", "should", "contractor", "consultant", "inspection",
+    "officer", "reference", "contract", "mitigation", "details", "estate", "region", "overview", "photo",
+    "description", "issue", "time", "date", "issued", "name", "post", "applicable", "performance",
+    "report", "check", "site", "form", "yes", "works", "concerned", "leucaena", "leucocephala",
+    "planter", "enlargement", "preparation", "processing"
+]);
+
+function tmuLetters(s) {
+    return String(s || "").toLowerCase().replace(/[^a-z]/g, "");
+}
+
+function joinSplitTmuWords(s) {
+    let t = String(s || "");
+    // Join runs of single letters: "C o n d u c t" → "Conduct"
+    t = t.replace(/\b(?:[A-Za-z]\s+){2,}[A-Za-z]\b/g, (m) => m.replace(/\s+/g, ""));
+    const words = t.split(/\s+/).filter((w) => w.length);
+    const out = [];
+    for (let i = 0; i < words.length; i++) {
+        let merged = false;
+        for (let n = 4; n >= 2 && i + n - 1 < words.length; n--) {
+            const parts = words.slice(i, i + n);
+            if (parts.some((p) => /[^A-Za-z.,]$/.test(p) && !/^[A-Za-z]+[.,]?$/.test(p))) continue;
+            // Only join when fragments are short (pdf.js letter-spacing / mid-word wraps)
+            if (!parts.every((p) => tmuLetters(p).length <= 7)) continue;
+            const candLetters = parts.map(tmuLetters).join("");
+            if (TMU_JOIN_WORDS.has(candLetters)) {
+                const punct = (parts[parts.length - 1].match(/[.,]+$/) || [""])[0];
+                out.push(parts.map((p) => p.replace(/[.,]+$/, "")).join("") + punct);
+                i += n - 1;
+                merged = true;
+                break;
+            }
+        }
+        if (!merged) out.push(words[i]);
+    }
+    // Join leftover 1–3 letter non-stop fragments into one word
+    const out2 = [];
+    let buf = "";
+    const flush = () => { if (buf) { out2.push(buf); buf = ""; } };
+    for (const w of out) {
+        const letters = tmuLetters(w);
+        const isShort = letters.length > 0 && letters.length <= 3 && /^[A-Za-z]+[.,]?$/.test(w);
+        const isStop = TMU_STOP_WORDS.has(letters);
+        if (buf) {
+            if (isShort && !isStop) {
+                const punct = (w.match(/[.,]+$/) || [""])[0];
+                buf = buf.replace(/[.,]+$/, "") + w.replace(/[.,]+$/, "") + punct;
+                continue;
+            }
+            flush();
+        }
+        if (isShort && !isStop) buf = w;
+        else out2.push(w);
+    }
+    flush();
+    return out2.join(" ");
+}
+
+function repairTmuGluedPhrases(s) {
+    let t = String(s || "");
+    t = t.replace(/(\d)(Estate|Court)\b/gi, "$1 $2");
+    t = t.replace(/\bfoliagwas\b/gi, "foliage was");
+    t = t.replace(/\b(foliage|fronds|frond|branches|branch|tree|trees|climber)(was|were|is|are)\b/gi, "$1 $2");
+    t = t.replace(/\b(deal|dead)\s+branch\s+es\b/gi, "$1 branches");
+    return t;
+}
+
+function stripTmuFurniture(s) {
+    let t = String(s || "");
+    t = t.replace(/\*\s*Delete as appropriate\*?/gi, " ");
+    t = t.replace(/\bDelete as appropriate\b/gi, " ");
+    t = t.replace(/\d*ALM[I]?\s*\/\s*TM\d+\b/gi, " ");
+    t = t.replace(/\((?:post|Name)\)/gi, " ");
+    t = t.replace(/\d*\s*DETAILS\b/g, " ");
+    t = t.replace(/\bTMU\s*-?\s*Form\s*-?\s*\d+\b/gi, " ");
+    t = t.replace(/\(?\s*Issued\s+\d{1,2}\s*\/\s*\d{1,2}\s*\)?/gi, " ");
+    t = t.replace(/\bMitigation\s+Required\s*:?\s*Yes\s*\/\s*No\s*\*?/gi, " ");
+    t = t.replace(/\bRoutine Maintenance\s*\/\s*Tree Works\s*\*?/gi, " ");
+    t = t.replace(/[⚫●•◦▪▫◆◇]/g, " ; ");
+    return t;
+}
+
 function normalizeTmuPdfText(text) {
     let t = normalizePdfText(text || "");
     // pdf.js / column layout glue Tree ID to Finding, Photo, or the time column
     t = t.replace(/([A-Z]{1,6}\d{0,2}-(?:LL\d{1,2}|[A-Z]\d{3,4}))(\d{1,2}:[0-5]\d)/gi, "$1 $2");
     t = t.replace(/([A-Z]{1,6}\d{0,2}-(?:LL\d{1,2}|[A-Z]\d{3,5}))(?=Photo|Finding|Recommendation|Estate|Overview|Date)/gi, "$1 ");
     t = t.replace(/\bEs\s+tate\b/g, "Estate");
-    for (let i = 0; i < 5; i++) {
-        const next = t.replace(/([A-Za-z]{2,})\s+([A-Za-z])\s+([A-Za-z]{2,})/g, "$1$2$3");
-        if (next === t) break;
-        t = next;
-    }
+    t = t.replace(/(\d)(Estate|Court|DETAILS|ALM[I]?|Finding|Recommendation|Overview)\b/gi, "$1 $2");
+    t = t.replace(/(\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2})(\d)/g, "$1 $2");
+    // page number glued to a date whose day is 10-31 (e.g. 430.10.2026), not 06.11.2026 / 30.11.2026
+    t = t.replace(/(\d)([12]\d|3[01])([./]\d{1,2}[./]\d{2,4})/g, "$1 $2$3");
+    t = t.replace(/\bDETAILS(?=Estate|Date|Photo|Finding|Region)/g, "DETAILS ");
+    t = t.replace(/(Estate\s*\/\s*[A-Z]{2,5}\d{0,2})(?=Finding|Recommendation|Photo|Overview|Date)/g, "$1 ");
+    t = joinSplitTmuWords(t);
+    t = repairTmuGluedPhrases(t);
     t = t.replace(/[ \t]+/g, " ");
     return t;
 }
@@ -1322,17 +1427,20 @@ function normalizeTmuPdfText(text) {
 function cleanupTmuClause(raw) {
     let t = String(raw || "");
     t = t.replace(/[\u0000-\u001f\u0085\u2028\u2029]/g, " ");
+    t = stripTmuFurniture(t);
     t = t.replace(/\bEs\s+tate\b/g, "Estate");
-    for (let i = 0; i < 5; i++) {
-        const next = t.replace(/([A-Za-z]{2,})\s+([A-Za-z])\s+([A-Za-z]{2,})/g, "$1$2$3");
-        if (next === t) break;
-        t = next;
-    }
+    t = joinSplitTmuWords(t);
+    t = repairTmuGluedPhrases(t);
     t = t.replace(/\s+/g, " ").trim();
-    t = t.replace(/\s*(?:Overview\b|TMU-Form-\d+|TMU\s*-?\s*Form\s*-?\s*\d+|Date\s*\/\s*Time|Estate\s*\/\s*Region|Findings\s+and\s+Recommendation|Photo\s*\(?\s*with|Photo\s*\(with|Inspection Officer|Contract reference|Mitigation Required)\b.*$/i, "").trim();
+    t = t.replace(/\s*(?:Overview\b|TMU-Form-\d+|TMU\s*-?\s*Form\s*-?\s*\d+|Date\s*\/\s*Time|Estate\s*\/\s*Region|Estate\s*\/\s*[A-Z]{2,6}\d{0,2}\b|Estate\s*\/\s*Findings|Findings\s+and\s+Recommendation|Photo\s*\(?\s*with|Photo\s*\(with|Inspection Officer|Contract reference|Mitigation Required)\b.*$/i, "").trim();
     t = t.replace(/\s*(?:Yes\s*\/\s*No\s*\*?|Routine Maintenance\s*\/\s*Tree Works\s*\*?)\s*$/i, "").trim();
+    t = t.replace(/(\d)([12]\d|3[01])([./]\d{1,2}[./]\d{2,4})/g, "$1 $2$3");
+    t = t.replace(/\s+\d{1,2}\s*[./]\s*\d{1,2}\s*[./]\s*\d{2,4}\s*$/, "").trim();
     t = t.replace(/\s+\d{1,2}\s*$/, "").trim();
-    t = t.replace(/^[:.\-\s]+/, "").replace(/[:.\-\s]+$/, "").trim();
+    t = t.replace(/\s*;\s*/g, "; ").replace(/^(?:;\s*)+/, "").replace(/(?:;\s*)+$/, "").trim();
+    // Signature / officer name bleed (e.g. "TONG Tung-shing, Tommy" / "TONGTung-shing, Tommy")
+    t = t.replace(/\s+[A-Z]{3,}[A-Za-z\-]*(?:[,\s]+[A-Z][a-zA-Z\-]+)+\.?\s*$/, "").trim();
+    t = t.replace(/\s+\./g, ".").replace(/^[:.\-\s]+/, "").replace(/[:\-\s]+$/, "").trim();
     return t;
 }
 
@@ -1361,24 +1469,58 @@ function stripTmuTrailingEcho(rec, finding) {
             }
         }
     }
-    return rec;
+    // Strip a trailing binomial / caption that already appears in the Finding
+    const trimmed = String(rec || "").replace(/\s+([A-Z][a-z]+(?:\s+[a-z]+){1,3})\s*$/, (all, tail) => {
+        const tailC = compactTmuLetters(tail);
+        if (tailC.length >= 8 && findC.indexOf(tailC) !== -1) return "";
+        return all;
+    });
+    return trimmed;
+}
+
+function cleanupTmuItemLabel(s) {
+    let t = String(s || "");
+    t = t.replace(/(\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2})(\d)/g, "$1 $2");
+    t = t.replace(/(Estate\s*\/\s*[A-Z]{2,5}\d{0,2})(?=Finding|Recommendation|Photo|Overview|Date)/g, "$1 ");
+    t = stripTmuFurniture(t);
+    t = t.replace(/\bDate\s*\/\s*Time\b/gi, " ");
+    t = t.replace(/\bEstate\s*\/\s*Region\b/gi, " ");
+    t = t.replace(/\bFindings\s+and\s+Recommendation\b/gi, " ");
+    t = t.replace(/\bPhoto\s*\(?\s*with\b[^)]*\)?/gi, " ");
+    t = t.replace(/\b(?:Overview|DETAILS|Inspection Officer|Contract reference|Region)\b/gi, " ");
+    t = t.replace(/\b\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}\b/g, " ");
+    t = t.replace(/\b\d{1,2}\s*[./]\s*\d{1,2}\s*[./]\s*\d{2,4}\b/g, " ");
+    t = t.replace(/(?:\b\d\s+)?Estate\s*\/\s*[A-Z]{1,6}\d{0,2}\b/gi, " ");
+    t = joinSplitTmuWords(t);
+    t = repairTmuGluedPhrases(t);
+    t = t.replace(/\s+/g, " ").trim();
+    t = t.replace(/^[:.\-\s]+/, "").replace(/[:.\-\s]+$/, "").trim();
+    return t;
+}
+
+function tmuItemTreeId(label) {
+    const raw = String(label || "").trim();
+    const m = raw.match(/^([A-Z]{1,6}\d{0,2}-(?:LL\d{1,2}|[A-Z]\d{3,5}))\b/i);
+    if (m) {
+        const id = normalizeTreeId(m[1]);
+        if (isValidTreeId(id)) return id;
+    }
+    return "";
 }
 
 function extractTmuTrees(text) {
     const flat = normalizeTmuPdfText(text).replace(/\r/g, "").replace(/\n+/g, " ");
-    const idRe = /(?:^|[^0-9])(\d{1,2})\.\s*([A-Z]{1,6}\d{0,2}-(?:LL\d{1,2}|[A-Z]\d{3,5}))(?![0-9A-Za-z])/gi;
+    const itemRe = /(?:^|[^0-9])(\d{1,2})\.\s+/g;
     const hits = [];
     let m;
-    while ((m = idRe.exec(flat)) !== null) {
-        const treeId = normalizeTreeId(m[2]);
-        if (!isValidTreeId(treeId)) continue;
-        hits.push({ treeId, index: m.index, end: m.index + m[0].length });
+    while ((m = itemRe.exec(flat)) !== null) {
+        hits.push({ n: Number(m[1]), index: m.index, end: m.index + m[0].length });
     }
     const seen = new Set();
     const uniqueHits = [];
     for (const h of hits) {
-        if (seen.has(h.treeId)) continue;
-        seen.add(h.treeId);
+        if (seen.has(h.n)) continue;
+        seen.add(h.n);
         uniqueHits.push(h);
     }
     const trees = [];
@@ -1386,32 +1528,128 @@ function extractTmuTrees(text) {
         const start = uniqueHits[i].end;
         const stop = i + 1 < uniqueHits.length ? uniqueHits[i + 1].index : flat.length;
         const block = flat.slice(start, stop);
+        const findIdx = block.search(/\bFinding\s*:/i);
+        const recIdx = block.search(/\bRecommendation\s*:/i);
+        let labelRaw = "";
+        if (findIdx >= 0) labelRaw = block.slice(0, findIdx);
+        else if (recIdx >= 0) labelRaw = block.slice(0, recIdx);
+        else labelRaw = block;
+        const label = cleanupTmuItemLabel(labelRaw);
+        if (!label) continue;
+        const treeId = tmuItemTreeId(label) || label;
         let finding = "";
         const fm = block.match(/Finding\s*:\s*([\s\S]*?)(?=\s*Recommendation\s*:|$)/i);
-        if (fm) finding = cleanupTmuClause(fm[1]);
+        if (fm) finding = cleanupTmuClause(fm[1]).replace(/\.+$/, "");
         let rec = "";
         const rm = block.match(/Recommendation\s*:\s*([\s\S]*)$/i);
         if (rm) rec = cleanupTmuClause(rm[1]);
         if (finding && rec) rec = stripTmuTrailingEcho(rec, finding);
-        trees.push({ treeId: uniqueHits[i].treeId, finding, rec });
+        rec = cleanupTmuClause(rec);
+        trees.push({ treeId, finding, rec });
     }
     return trees;
 }
 
-function extractTmuEstate(text, filename, treeId, caseNo) {
-    const blob = normalizeTmuPdfText(text) + "\n" + String(text || "");
+function isWeakTmuEstate(estate) {
+    if (isWeakEstate(estate)) return true;
+    const e = String(estate || "").trim();
+    if (/slope\s+facing/i.test(e)) return true;
+    if (/Kwai\s+Yin\s+Court/i.test(e) && !/Kwai\s+Chung/i.test(e)) return true;
+    if (/^(?:Region|District|Estate|Unknown)\b/i.test(e)) return true;
+    if (/Findings|Recommendation|Photo|Date\s*\/\s*Time|Overview|DETAILS/i.test(e)) return true;
+    if (/^\d+\s+(Estate|Court)$/i.test(e)) return true;
+    if (/^(?:Time|Date|Findings?|Recommendation|Photo|Overview|Region|District)\s+(Estate|Court)$/i.test(e)) return true;
+    return false;
+}
+
+function normalizeTmuEstateName(raw) {
+    let s = String(raw || "").replace(/\s+/g, " ").trim();
+    s = s.replace(/(\d)(Estate|Court)\b/gi, "$1 $2");
+    s = s.replace(/\b\d{1,2}:\d{2}(?:\s*-\s*\d{1,2}:\d{2})?\b/g, " ");
+    s = s.replace(/\s*\/\s*[A-Z]{1,6}\d{0,2}\s*$/i, "").trim();
+    s = s.replace(/\s+/g, " ").trim();
+    if (/shatin\s+pass/i.test(s)) return "Shatin Pass Estate";
+    if (/kwai\s+chung\s*1\b/i.test(s)) return "Kwai Chung 1 Estate";
+    if (/kwai\s+chung\s*2\b/i.test(s)) return "Kwai Chung 2 Estate";
+    if (/on\s+yam/i.test(s)) return "On Yam Estate";
+    if (!s) return "";
+    const placed = normalizePlace(s);
+    if (isWeakTmuEstate(placed)) return "";
+    const base = placed.replace(/\s+(Estate|Court)$/i, "");
+    const known = KNOWN_PLACES.some((n) => n.toLowerCase() === placed.toLowerCase() || n.toLowerCase() === base.toLowerCase());
+    if (!known && base.split(/\s+/).length < 2) return "";
+    return placed;
+}
+
+function extractTmuEstateCell(text) {
+    const blob = repairTmuGluedPhrases(normalizeTmuPdfText(text) + "\n" + String(text || ""));
+    const badName = /^(?:Time|Date|Findings?|Recommendation|Photo|Overview|Region|District|DETAILS|Inspection|Officer|Contract|Works|Mitigation|Name|Post)$/i;
+    const badCode = /^(?:Region|District|Findings?|Recommendation|Photo|Time|Date|Overview|Form|Issued|DETAILS|Consultant|Contractor|Maintenance|Works)$/i;
+    if (/Shatin\s+Pass(?:\s+\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2})?\s+Estate\s*\/\s*WTT\b/i.test(blob)) {
+        return "Shatin Pass Estate";
+    }
+    if (/On\s+Yam(?:\s+\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2})?\s+Estate\s*\/\s*KC\b/i.test(blob)) {
+        return "On Yam Estate";
+    }
+    // Kwai Chung can be split from "1 Estate / KC" by the tree-id / time columns
+    const kc = blob.match(/Kwai\s+Chung[\s\S]{0,180}?([12])\s+Estate\s*\/\s*KC\b/i);
+    if (kc) return normalizeTmuEstateName("Kwai Chung " + kc[1] + " Estate");
+    const re = /\b((?:Shatin\s+Pass|Kwai\s+Chung\s+[12]|On\s+Yam|[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z0-9]+){0,3}))(?:\s+\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2})?\s+(Estate|Court)\s*\/\s*([A-Z]{1,6}\d{0,2})\b/gi;
+    let m;
+    while ((m = re.exec(blob)) !== null) {
+        if (badName.test(m[1].trim()) || badCode.test(m[3])) continue;
+        const est = normalizeTmuEstateName(m[1] + " " + m[2]);
+        if (est && !isWeakTmuEstate(est)) return est;
+    }
+    return "";
+}
+
+function extractTmuEstateFromHeader(text) {
+    const flat = normalizeTmuPdfText(text).replace(/\r/g, "").replace(/\n+/g, " ");
+    const cut = flat.search(/(?:^|[^0-9])1\.\s+/);
+    const header = cut >= 0 ? flat.slice(0, cut) : flat;
+    const specific = [
+        [/Shatin\s+Pass(?:\s+Estate)?/i, "Shatin Pass Estate"],
+        [/Kwai\s+Chung\s*1(?:\s+Estate)?/i, "Kwai Chung 1 Estate"],
+        [/Kwai\s+Chung\s*2(?:\s+Estate)?/i, "Kwai Chung 2 Estate"],
+        [/On\s+Yam(?:\s+Estate)?/i, "On Yam Estate"]
+    ];
+    for (const [re, name] of specific) {
+        if (re.test(header)) return name;
+    }
     for (const name of KNOWN_PLACES) {
+        if (name.length < 6) continue;
         const re = new RegExp("\\b" + escapeRegExp(name).replace(/ /g, "\\s+") + "(?:\\s+(Estate|Court))?\\b", "i");
-        if (re.test(blob)) {
+        if (re.test(header)) {
             const est = normalizePlace(name);
-            if (!isWeakEstate(est)) return est;
+            if (!isWeakTmuEstate(est)) return est;
         }
     }
-    let estate = extractEstate(blob, filename || "");
-    if (estate) estate = estate.replace(/^(?:Region|Estate\s*\/\s*Region|District)\s+/i, "").trim();
-    if (estate && /on\s+yam/i.test(estate)) estate = "On Yam Estate";
-    return resolveEstate(estate, treeId, caseNo) || estate || "";
+    return "";
 }
+
+function extractTmuEstate(text, filename, treeId, caseNo) {
+    const fromCell = extractTmuEstateCell(text);
+    if (fromCell && !isWeakTmuEstate(fromCell)) return fromCell;
+    const fromHeader = extractTmuEstateFromHeader(text);
+    if (fromHeader && !isWeakTmuEstate(fromHeader)) return fromHeader;
+    // Case no (TMU-KC1 / TMU-KC2 / TMU-SPA / TMU-OY) can disambiguate when the cell is missing.
+    // Do not map a bare tree prefix "KC" to a single estate.
+    const prefix = treeId ? String(treeId).toUpperCase().split("-")[0] : "";
+    const fromCase = estateFromCaseNo(caseNo);
+    if (fromCase) return fromCase;
+    if (prefix && prefix !== "KC") {
+        const fromTree = estateFromTreeId(treeId);
+        if (fromTree) return fromTree;
+    }
+    const fromFile = extractTmuCaseNo("", filename || "");
+    if (fromFile) {
+        const fe = estateFromCaseNo(fromFile);
+        if (fe) return fe;
+    }
+    return "";
+}
+
 
 function parseTmuSiteCheckForm(text, filename) {
     const raw = String(text || "");

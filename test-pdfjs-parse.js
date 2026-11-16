@@ -425,12 +425,94 @@ checkTmu("tmu-oy-pdfjs", path.join(samplesRem, "tmu-oy-2026-004-pdfjs.txt"), "tm
   assert(addDaysUnpadded("18/11/2026", 14) === "2/12/2026", "deadline 18/11+14 unpadded");
   assert(estateFromTreeId("OY-T0034") === "On Yam Estate", "prefix OY");
   assert(estateFromCaseNo("TMU-OY-2026-004") === "On Yam Estate", "case OY");
+  assert(estateFromTreeId("SPA-T0136") === "Shatin Pass Estate", "prefix SPA");
+  assert(estateFromCaseNo("TMU-SPA-2026-003") === "Shatin Pass Estate", "case SPA");
+  assert(estateFromCaseNo("TMU-KC1-2026-004") === "Kwai Chung 1 Estate", "case KC1");
+  assert(estateFromCaseNo("TMU-KC2-2026-004") === "Kwai Chung 2 Estate", "case KC2");
+  assert(estateFromTreeId("KC-T1344") === "", "bare KC prefix must not map to one estate");
   assert(isValidTreeId("OY-T0034") && isValidTreeId("OY-T0051"), "OY tree ids valid");
+  assert(isValidTreeId("SPA-T0136") && isValidTreeId("KC-T1344"), "SPA/KC tree ids valid");
   assert(!isValidTreeId("TMU-OY-2026-004"), "case no is not a tree id");
+  assert(!isValidTreeId("TMU-KC1-2026-004"), "KC1 case no is not a tree id");
+  assert(extractTmuCaseNo("TMU Referral Case No. (if applicable): TMU-KC1-2026-004") === "TMU-KC1-2026-004", "extract KC1");
+  assert(extractTmuCaseNo("TMU - K C1 - 202 6 - 00 4") === "TMU-KC1-2026-004", "extract spaced KC1");
+  assert(extractTmuCaseNo("TMU - K C 2 - 202 6 - 00 4") === "TMU-KC2-2026-004", "extract spaced KC2");
   const invented = extractTmuTrees("TMU Referral Case No.: TMU-OY-2026-004");
   assert(invented.length === 0, "must not invent tree from TMU case no: " + JSON.stringify(invented));
+  const glued = cleanupTmuClause("No foliagwas found");
+  assert(glued === "No foliage was found", "unglue foliagwas: " + glued);
+  const br = cleanupTmuClause("Dead brancheswere found");
+  assert(br === "Dead branches were found", "unglue brancheswere: " + br);
+  const cond = cleanupTmuClause("Con d u ct tree risk assessment ⚫ Apply for tree removal if required");
+  assert(cond === "Conduct tree risk assessment; Apply for tree removal if required", "join conduct + bullets: " + cond);
+  const deal = cleanupTmuClause("Pruning works should be carried out to remove the deal bra n ch es.");
+  assert(deal === "Pruning works should be carried out to remove the deal branches.", "deal branches typo kept: " + deal);
   console.log("tmu-synthetic-and-helpers PASS");
 })();
+
+function padTmu(row) {
+  const c = row.slice();
+  while (c.length < 18) c.push("");
+  return c;
+}
+
+function checkTmuRows(lab, file, filename, exp) {
+  const text = fs.readFileSync(file, "utf8");
+  assert(!isTreeRemovalForm(text), lab + ": must not be Tree Removal");
+  assert(isTmuSiteCheckForm(text) || isTmuSiteCheckForm(normalizePdfText(text)), lab + ": detect TMU-Form-03");
+  const rows = parseReport(text, filename || path.basename(file) + ".pdf");
+  assert(rows.length === exp.length, lab + ": expected " + exp.length + " rows, got " + rows.length);
+  assert(rows.every(r => r.kind === "tmu"), lab + ": kind " + (rows[0] && rows[0].kind));
+  assert(rows.every(r => r.cells.length === 18), lab + ": 18 cols");
+  const c = rows.map(r => r.cells);
+  console.log(lab, c.map(r => ({ src: r[0], estate: r[1], case: r[2], date: r[3], tree: r[4], obs: r[5], mit: r[6], deadline: r[9] })));
+  for (let i = 0; i < exp.length; i++) {
+    const want = padTmu(exp[i]);
+    for (let j = 0; j < 10; j++) {
+      assert(c[i][j] === want[j], lab + ": row " + i + " col " + j + " expected " + JSON.stringify(want[j]) + " got " + JSON.stringify(c[i][j]));
+    }
+    assert(c[i].slice(10).every(x => x === ""), lab + ": cols 11-18 empty");
+  }
+  console.log(lab, "PASS");
+}
+
+const tmuSpa = [
+  ["TMU", "Shatin Pass Estate", "TMU-SPA-2026-003", "6/11/2026", "SPA-T0136",
+    "Climber on crown was observed", "Remove climber", "", "", "20/11/2026"],
+  ["TMU", "Shatin Pass Estate", "TMU-SPA-2026-003", "6/11/2026", "SPA-T0131",
+    "Dead branches was observed", "Pruning works should be carried out to remove the deal branches.", "", "", "20/11/2026"]
+];
+const tmuKc1 = [
+  ["TMU", "Kwai Chung 1 Estate", "TMU-KC1-2026-004", "30/11/2026", "KC-T1344",
+    "No foliage was found", "Conduct tree risk assessment; Apply for tree removal if required", "", "", "14/12/2026"],
+  ["TMU", "Kwai Chung 1 Estate", "TMU-KC1-2026-004", "30/11/2026", "KC-T1227",
+    "Dead fronds were found", "Crown cleaning is required", "", "", "14/12/2026"],
+  ["TMU", "Kwai Chung 1 Estate", "TMU-KC1-2026-004", "30/11/2026", "KC-T1142",
+    "Dead branches were found", "Crown cleaning is required", "", "", "14/12/2026"]
+];
+const tmuKc2 = [
+  ["TMU", "Kwai Chung 2 Estate", "TMU-KC2-2026-004", "30/10/2026", "KC-T0893",
+    "Dead tree was found", "Apply for tree removal", "", "", "13/11/2026"],
+  ["TMU", "Kwai Chung 2 Estate", "TMU-KC2-2026-004", "30/10/2026", "KC-T0235",
+    "Dead tree was found", "Apply for tree removal", "", "", "13/11/2026"],
+  ["TMU", "Kwai Chung 2 Estate", "TMU-KC2-2026-004", "30/10/2026", "Undersized tree",
+    "Dead tree was found", "EMO please arrange for removal", "", "", "13/11/2026"],
+  ["TMU", "Kwai Chung 2 Estate", "TMU-KC2-2026-004", "30/10/2026", "Undesirable species on slope facing Kwai Yin Court",
+    "Leucaena leucocephala were found", "Apply for tree removal", "", "", "13/11/2026"],
+  ["TMU", "Kwai Chung 2 Estate", "TMU-KC2-2026-004", "30/10/2026", "KC-T0933",
+    "Dead tree was found", "Apply for tree removal", "", "", "13/11/2026"]
+];
+
+const tmuForms = [
+  ["tmu-spa", "TMU_Form-03_SPA-2026-003", "TMU_Form-03_SPA-2026-003.pdf", tmuSpa],
+  ["tmu-kc1", "TMU_Form-03_202610_KC1", "TMU_Form-03_202610_KC1.pdf", tmuKc1],
+  ["tmu-kc2", "TMU_Form-03_KC_multi", "TMU_Form-03_KC_multi.pdf", tmuKc2]
+];
+for (const [lab, stem, filename, exp] of tmuForms) {
+  for (const kind of ["pdftotext", "layout", "pdfjs"]) {
+    checkTmuRows(lab + "-" + kind, path.join(samplesRem, stem + "-" + kind + ".txt"), filename, exp);
+  }
+}
 
 // AS Audit rows must keep Case deadline empty
 (() => {
