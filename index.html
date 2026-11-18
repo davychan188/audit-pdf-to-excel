@@ -66,9 +66,9 @@
             word-break: normal;
             hyphens: manual;
         }
-        /* Keep short values (ratings, Yes/No, dates) on one line when the column allows. */
+        /* Keep short values (type, S/N, ratings, Yes/No, dates) on one line when the column allows. */
         .table-removal td:nth-child(1),
-        .table-removal td:nth-child(6),
+        .table-removal td:nth-child(2),
         .table-removal td:nth-child(7),
         .table-removal td:nth-child(8),
         .table-removal td:nth-child(9),
@@ -76,34 +76,36 @@
         .table-removal td:nth-child(11),
         .table-removal td:nth-child(12),
         .table-removal td:nth-child(13),
-        .table-removal td:nth-child(15),
-        .table-removal td:nth-child(17),
+        .table-removal td:nth-child(14),
+        .table-removal td:nth-child(16),
         .table-removal td:nth-child(18),
-        .table-removal td:nth-child(19) {
+        .table-removal td:nth-child(19),
+        .table-removal td:nth-child(20) {
             white-space: nowrap;
             overflow-wrap: normal;
         }
-        /* Narrow measurement / Yes-No / rating columns; give Reason and Remarks room to wrap. */
-        .table-removal th:nth-child(1),  .table-removal td:nth-child(1)  { width: 2.2%; }  /* S/N */
-        .table-removal th:nth-child(2),  .table-removal td:nth-child(2)  { width: 7%; }    /* Estate */
-        .table-removal th:nth-child(3),  .table-removal td:nth-child(3)  { width: 6%; }    /* Tree No. */
-        .table-removal th:nth-child(4),  .table-removal td:nth-child(4)  { width: 7.5%; }  /* Scientific Name */
-        .table-removal th:nth-child(5),  .table-removal td:nth-child(5)  { width: 3.8%; }  /* Chinese Name */
-        .table-removal th:nth-child(6),  .table-removal td:nth-child(6)  { width: 3.2%; }  /* Height */
-        .table-removal th:nth-child(7),  .table-removal td:nth-child(7)  { width: 3.2%; }  /* DBH */
-        .table-removal th:nth-child(8),  .table-removal td:nth-child(8)  { width: 3.6%; }  /* Crown Spread */
-        .table-removal th:nth-child(9),  .table-removal td:nth-child(9)  { width: 3.6%; }  /* Girth */
-        .table-removal th:nth-child(10), .table-removal td:nth-child(10) { width: 4.2%; }  /* Amenity */
-        .table-removal th:nth-child(11), .table-removal td:nth-child(11) { width: 3.6%; }  /* Form */
-        .table-removal th:nth-child(12), .table-removal td:nth-child(12) { width: 3.6%; }  /* Health */
-        .table-removal th:nth-child(13), .table-removal td:nth-child(13) { width: 4.4%; }  /* Structural */
-        .table-removal th:nth-child(14), .table-removal td:nth-child(14) { width: 8%; }    /* Reason */
-        .table-removal th:nth-child(15), .table-removal td:nth-child(15) { width: 4.4%; }  /* Compensatory Yes/No */
-        .table-removal th:nth-child(16), .table-removal td:nth-child(16) { width: 6.3%; }  /* Reason for No Replacement */
-        .table-removal th:nth-child(17), .table-removal td:nth-child(17) { width: 6%; }    /* Ant. Removal Date */
-        .table-removal th:nth-child(18), .table-removal td:nth-child(18) { width: 6.2%; }  /* Ant. Planting Date */
-        .table-removal th:nth-child(19), .table-removal td:nth-child(19) { width: 6%; }    /* Actual Date */
-        .table-removal th:nth-child(20), .table-removal td:nth-child(20) { width: 7.2%; }  /* Remarks */
+        /* Narrow type / measurement / Yes-No / rating columns; give Reason and Remarks room to wrap. */
+        .table-removal th:nth-child(1),  .table-removal td:nth-child(1)  { width: 5%; }    /* TPC / Non-TPC */
+        .table-removal th:nth-child(2),  .table-removal td:nth-child(2)  { width: 2.2%; }  /* S/N */
+        .table-removal th:nth-child(3),  .table-removal td:nth-child(3)  { width: 6.4%; }  /* Estate */
+        .table-removal th:nth-child(4),  .table-removal td:nth-child(4)  { width: 6%; }    /* Tree No. */
+        .table-removal th:nth-child(5),  .table-removal td:nth-child(5)  { width: 7%; }    /* Scientific Name */
+        .table-removal th:nth-child(6),  .table-removal td:nth-child(6)  { width: 3.8%; }  /* Chinese Name */
+        .table-removal th:nth-child(7),  .table-removal td:nth-child(7)  { width: 3.2%; }  /* Height */
+        .table-removal th:nth-child(8),  .table-removal td:nth-child(8)  { width: 3.2%; }  /* DBH */
+        .table-removal th:nth-child(9),  .table-removal td:nth-child(9)  { width: 3.6%; }  /* Crown Spread */
+        .table-removal th:nth-child(10), .table-removal td:nth-child(10) { width: 3.6%; }  /* Girth */
+        .table-removal th:nth-child(11), .table-removal td:nth-child(11) { width: 4.2%; }  /* Amenity */
+        .table-removal th:nth-child(12), .table-removal td:nth-child(12) { width: 3.6%; }  /* Form */
+        .table-removal th:nth-child(13), .table-removal td:nth-child(13) { width: 3.6%; }  /* Health */
+        .table-removal th:nth-child(14), .table-removal td:nth-child(14) { width: 4.4%; }  /* Structural */
+        .table-removal th:nth-child(15), .table-removal td:nth-child(15) { width: 7%; }    /* Reason */
+        .table-removal th:nth-child(16), .table-removal td:nth-child(16) { width: 4.4%; }  /* Compensatory Yes/No */
+        .table-removal th:nth-child(17), .table-removal td:nth-child(17) { width: 5.8%; }  /* Reason for No Replacement */
+        .table-removal th:nth-child(18), .table-removal td:nth-child(18) { width: 5.6%; }  /* Ant. Removal Date */
+        .table-removal th:nth-child(19), .table-removal td:nth-child(19) { width: 5.8%; }  /* Ant. Planting Date */
+        .table-removal th:nth-child(20), .table-removal td:nth-child(20) { width: 5.6%; }  /* Actual Date */
+        .table-removal th:nth-child(21), .table-removal td:nth-child(21) { width: 6%; }    /* Remarks */
         /* Phones only: keep a readable min width and let the user scroll to Remarks. */
         @media (max-width: 800px) {
             .table-removal { min-width: 1000px; }
@@ -171,8 +173,9 @@ const HEADERS_TNS = [
     "Confirmed date", "Confirmed by", "Remarks"
 ];
 
-// Tree Removal Summary (20 cols) — Non-TPC / TPC tree removal forms
+// Tree Removal Summary (21 cols) — type from filename, then the original 20 data columns
 const HEADERS_REMOVAL = [
+    "TPC / Non-TPC",
     "S/N", "Estate / Project", "Tree No.", "Scientific Name", "Chinese Name",
     "Height (m)", "DBH (mm)", "Crown Spread (m)", "Girth Size (mm)",
     "Amenity Value (High/Medium/Low)", "Form (Good/Average/Poor)",
@@ -735,11 +738,30 @@ function isTreeRemovalForm(text) {
         || /Reason\s+for\s+tree\s+removal/i.test(text);
 }
 
+/** Classify TPC vs Non-TPC from the source filename (Non-TPC before TPC). */
+function classifyRemovalTypeFromFilename(filename) {
+    const name = String(filename || "");
+    if (!name) return "";
+    if (/non[\s_\-]?tpc/i.test(name)) return "Non-TPC";
+    // Token "TPC": start of name or not preceded by a letter (TPC_…, tpc-…, _TPC).
+    if (/(?:^|[^A-Za-z])TPC(?:[^A-Za-z]|$)/i.test(name)) return "TPC";
+    return "";
+}
+
+/** Unambiguous form-title fallback when the filename has neither mark. */
+function classifyRemovalTypeFromTitle(text) {
+    const t = String(text || "").replace(/\s+/g, " ");
+    if (/non[\s_\-]?TPC\s+application\s*s/i.test(t)) return "Non-TPC";
+    if (/Tree\s+Preservation\s+Committee\s*\(\s*TPC\s*\)/i.test(t)) return "TPC";
+    return "";
+}
+
+function classifyRemovalType(filename, text) {
+    return classifyRemovalTypeFromFilename(filename) || classifyRemovalTypeFromTitle(text) || "";
+}
+
 function detectRemovalKind(text, filename) {
-    const blob = ((filename || "") + "\n" + (text || "")).replace(/\s+/g, " ");
-    if (/Non[\s\-]?TPC/i.test(blob)) return "Non-TPC";
-    if (/\bTPC\b/i.test(blob)) return "TPC";
-    return "Non-TPC";
+    return classifyRemovalType(filename, text) || "Non-TPC";
 }
 
 
@@ -1027,7 +1049,9 @@ function extractRemovalExtras(slice, fullText) {
 
 function buildRemovalRow(fields) {
     const f = fields || {};
+    const type = (f.removalType === "TPC" || f.removalType === "Non-TPC") ? f.removalType : "";
     const cells = [
+        type,
         f.sn != null && f.sn !== "" ? String(f.sn) : "",
         f.estate || "Unknown Estate",
         f.treeId || "",
@@ -1342,7 +1366,8 @@ function titleCaseWord(s) {
 function parseTreeRemovalForm(text, filename) {
     text = normalizeRemovalPdfText(text);
     const rows = [];
-    const removalKind = detectRemovalKind(text, filename);
+    const removalType = classifyRemovalType(filename, text);
+    const removalKind = removalType || detectRemovalKind(text, filename);
     const caseNo = extractRemovalCaseNo(text, filename);
     const defaultReason = findRemovalReason(text);
     const defaultEstate = extractEstate(text, filename || "");
@@ -1354,6 +1379,7 @@ function parseTreeRemovalForm(text, filename) {
     if (trees.length === 0) {
         if (defaultReason || defaultEstate || caseNo) {
             rows.push(buildRemovalRow({
+                removalType,
                 sn: "",
                 estate: resolveEstate(defaultEstate, "", caseNo) || "Unknown Estate",
                 treeId: "",
@@ -1442,6 +1468,7 @@ function parseTreeRemovalForm(text, filename) {
             antComp: extras.antComp,
             actual: extras.actual,
             remarks: extras.remarks || rowCase || "",
+            removalType,
             removalKind
         }));
     }
@@ -1450,8 +1477,9 @@ function parseTreeRemovalForm(text, filename) {
 }
 
 function fillMissingSerialNumbers(rows) {
+    const snIdx = 1; // after TPC / Non-TPC
     const nums = rows.map(r => {
-        const s = r && r.cells ? r.cells[0] : "";
+        const s = r && r.cells ? r.cells[snIdx] : "";
         return /^\d+$/.test(s) ? Number(s) : null;
     });
     let changed = true;
@@ -1476,8 +1504,8 @@ function fillMissingSerialNumbers(rows) {
     for (let i = 0; i < rows.length; i++) {
         if (nums[i] == null) continue;
         const want = String(nums[i]);
-        if (rows[i].cells[0] !== want) {
-            rows[i].cells[0] = want;
+        if (rows[i].cells[snIdx] !== want) {
+            rows[i].cells[snIdx] = want;
             if (rows[i].extras) rows[i].extras.sn = want;
         }
     }
@@ -2050,6 +2078,7 @@ function updateCopyButtons() {
 
 // Display-only line breaks for Removal headers; clipboard / HEADERS_REMOVAL stay unchanged.
 const HEADERS_REMOVAL_DISPLAY = [
+    "TPC /<br>Non-TPC",
     "S/N", "Estate / Project", "Tree No.", "Scientific Name", "Chinese Name",
     "Height (m)", "DBH (mm)", "Crown Spread (m)", "Girth Size (mm)",
     "Amenity Value<br>(High/<wbr>Medium/<wbr>Low)", "Form<br>(Good/<wbr>Average/<wbr>Poor)",

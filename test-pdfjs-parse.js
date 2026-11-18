@@ -23,6 +23,13 @@ function cells(row) {
   return row.cells || row;
 }
 
+/** Split the leading TPC / Non-TPC column from the original 20 Removal data columns. */
+function removalParts(row) {
+  const c = cells(row);
+  if (c && c.length >= 21) return { type: c[0], d: c.slice(1), all: c };
+  return { type: '', d: c, all: c };
+}
+
 function check(lab, file, exp) {
   const text = fs.readFileSync(file, 'utf8');
   const rows = parseReport(text, path.basename(file) + '.pdf');
@@ -87,9 +94,13 @@ function checkRemoval(lab, file, exp) {
   const rows = parseReport(text, path.basename(file).replace(/\.txt$/, '') + '.pdf');
   assert(rows.length === exp.n, `${lab}: expected ${exp.n} rows, got ${rows.length}`);
   assert(rows.every(r => r.kind === 'removal'), `${lab}: kind`);
-  assert(rows.every(r => r.cells.length === 20), `${lab}: 20 cols`);
-  const c = rows.map(r => r.cells);
-  console.log(lab, c.map(r => ({ sn: r[0], estate: r[1], tree: r[2], sci: r[3], zh: r[4], h: r[5], reason: r[13], remarks: r[19] })));
+  assert(rows.every(r => r.cells.length === 21), `${lab}: 21 cols`);
+  const parts = rows.map(r => removalParts(r));
+  const c = parts.map(p => p.d);
+  if (exp.type) {
+    assert(parts.every(p => p.type === exp.type), `${lab}: type ${parts.map(p => p.type)}`);
+  }
+  console.log(lab, parts.map(p => ({ type: p.type, sn: p.d[0], estate: p.d[1], tree: p.d[2], sci: p.d[3], zh: p.d[4], h: p.d[5], reason: p.d[13], remarks: p.d[19] })));
   assert(c.every(r => r[1] === exp.estate), `${lab}: estate ${c[0] && c[0][1]}`);
   assert(c.map(r => r[2]).join(',') === exp.trees.join(','), `${lab}: trees`);
   assert(c.map(r => r[0]).join(',') === exp.sns.join(','), `${lab}: sns ${c.map(r => r[0])}`);
@@ -119,6 +130,7 @@ function checkRemoval(lab, file, exp) {
 
 checkRemoval('non-tpc-removal-pdfjs', path.join(samplesRem, 'non-tpc-20261021-pdfjs.txt'), {
   n: 3,
+  type: 'Non-TPC',
   estate: 'Tai Yuen Estate',
   sns: ['26', '27', '28'],
   trees: ['TY-T0315', 'TY-T0571', 'TY-T1198'],
@@ -143,6 +155,7 @@ checkRemoval('non-tpc-removal-pdfjs', path.join(samplesRem, 'non-tpc-20261021-pd
 
 checkRemoval('sco-20261017-pdfjs', path.join(samplesRem, 'sco-20261017-pdfjs.txt'), {
   n: 6,
+  type: 'Non-TPC',
   estate: 'Shui Chuen O Estate',
   sns: ['20', '21', '22', '23', '24', '25'],
   trees: ['SCO-A0004', 'SCO-A0005', 'SCO-A0006', 'SCO-A0007', 'SCO-A0008', 'SCO-A0009'],
@@ -173,6 +186,7 @@ checkRemoval('sco-20261017-pdfjs', path.join(samplesRem, 'sco-20261017-pdfjs.txt
 
 // Also accept pdftotext-style Tai Yuen layout
 checkRemoval('non-tpc-removal-pdftotext', path.join(samplesRem, 'non-tpc-20261021.txt'), {
+  type: 'Non-TPC',
   n: 3,
   estate: 'Tai Yuen Estate',
   sns: ['26', '27', '28'],
@@ -205,10 +219,11 @@ checkRemoval('non-tpc-removal-pdftotext', path.join(samplesRem, 'non-tpc-2026102
   assert(rows.every(r => r.cells[0] === 'AS'), 'Source AS');
   assert(HEADERS_TNS.length === 18, 'HEADERS_TNS len');
   assert(HEADERS_TNS[12] === 'AS Reply Date', 'AS Reply Date position');
-  assert(HEADERS_REMOVAL.length === 20, 'HEADERS_REMOVAL len');
-  assert(HEADERS_REMOVAL[0] === 'S/N', 'removal header S/N');
-  assert(HEADERS_REMOVAL[3] === 'Scientific Name', 'removal scientific');
-  assert(HEADERS_REMOVAL[19] === 'Remarks (if any)', 'removal remarks header');
+  assert(HEADERS_REMOVAL.length === 21, 'HEADERS_REMOVAL len');
+  assert(HEADERS_REMOVAL[0] === 'TPC / Non-TPC', 'removal header type');
+  assert(HEADERS_REMOVAL[1] === 'S/N', 'removal header S/N');
+  assert(HEADERS_REMOVAL[4] === 'Scientific Name', 'removal scientific');
+  assert(HEADERS_REMOVAL[20] === 'Remarks (if any)', 'removal remarks header');
   console.log('tns-shape PASS');
 })();
 
@@ -270,7 +285,9 @@ assert(/BE-T0307_Hanger/.test(n3.replace(/\s+/g, '')) || /BE-T0307\s*_Hanger/.te
   const rows = parseReport(gluedText, 'TNS-TY-2026-002.pdf');
   assert(rows.length === 3, 'glued rows: ' + rows.length);
   assert(rows.every(r => r.kind === 'removal'), 'glued kind');
-  const c = rows.map(r => r.cells);
+  const parts = rows.map(r => removalParts(r));
+  const c = parts.map(p => p.d);
+  assert(rows.every(r => r.cells.length === 21), 'glued 21 cols');
   assert(c.map(r => r[5]).join(',') === '8,11,6', 'glued heights: ' + c.map(r => r[5]));
   assert(c.map(r => r[6]).join(',') === '310,370,130', 'glued dbhs: ' + c.map(r => r[6]));
   assert(c.map(r => r[7]).join(',') === '5,6,1', 'glued crowns: ' + c.map(r => r[7]));
@@ -278,11 +295,12 @@ assert(/BE-T0307_Hanger/.test(n3.replace(/\s+/g, '')) || /BE-T0307\s*_Hanger/.te
   assert(c.every(r => r[9] === 'Low'), 'glued amenity');
   assert(c.every(r => r[1] === 'Tai Yuen Estate'), 'glued estate');
   assert(c.every(r => r[19] === 'TNS-TY-2026-002'), 'glued remarks');
+  assert(parts.every(p => p.type === 'Non-TPC'), 'glued type from title fallback: ' + parts.map(p => p.type));
   // Simulate headerless TSV copy (copyRemoval uses includeHeader=false)
-  const tsvLines = c.map(r => r.join('\t'));
+  const tsvLines = rows.map(r => r.cells.join('\t'));
   const tsv = tsvLines.join('\n');
-  assert(!tsv.startsWith('S/N'), 'tsv must not start with header');
-  assert(tsvLines[0].startsWith('26\tTai Yuen Estate\tTY-T0315'), 'tsv first data: ' + tsvLines[0].slice(0, 80));
+  assert(!tsv.startsWith('S/N') && !tsv.startsWith('TPC / Non-TPC'), 'tsv must not start with header');
+  assert(tsvLines[0].startsWith('Non-TPC\t26\tTai Yuen Estate\tTY-T0315'), 'tsv first data: ' + tsvLines[0].slice(0, 80));
   assert(tsvLines[0].includes('\t8\t310\t5\t973\tLow\t'), 'tsv measurements in row0: ' + tsvLines[0]);
   console.log('glued-measurements PASS');
 })();
@@ -293,6 +311,7 @@ assert(/BE-T0307_Hanger/.test(n3.replace(/\s+/g, '')) || /BE-T0307\s*_Hanger/.te
 (() => {
   const exp = {
     n: 1,
+    type: 'TPC',
     estate: 'Fu Tai Estate',
     sns: ['3'],
     trees: ['FTA-T0515'],
@@ -328,6 +347,7 @@ assert(/BE-T0307_Hanger/.test(n3.replace(/\s+/g, '')) || /BE-T0307\s*_Hanger/.te
 (() => {
   const exp = {
     n: 1,
+    type: 'TPC',
     estate: 'Kwong Fuk Estate',
     sns: ['6'],
     trees: ['SPWA-0058'],
@@ -598,9 +618,10 @@ check("easeful-keep-finding", path.join(samplesRem, "AS_EasefulCourt_dead_tree-p
   const dm = html.match(/const HEADERS_REMOVAL_DISPLAY = \[([\s\S]*?)\];/);
   assert(dm, "HEADERS_REMOVAL_DISPLAY block");
   const labels = [...dm[1].matchAll(/"([^"]*)"/g)].map(m => m[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim());
-  assert(labels.length === 20, "display headers 20: " + labels.length);
-  assert(labels[0] === "S/N" && /Remarks/i.test(labels[19]), "display ends with Remarks: " + labels[19]);
-  assert(HEADERS_REMOVAL.length === 20 && HEADERS_REMOVAL[19] === "Remarks (if any)", "copy headers unchanged");
+  assert(labels.length === 21, "display headers 21: " + labels.length);
+  assert(/^TPC \/ Non-TPC$/i.test(labels[0]), "display starts with type: " + labels[0]);
+  assert(labels[1] === "S/N" && /Remarks/i.test(labels[20]), "display ends with Remarks: " + labels[20]);
+  assert(HEADERS_REMOVAL.length === 21 && HEADERS_REMOVAL[0] === "TPC / Non-TPC" && HEADERS_REMOVAL[20] === "Remarks (if any)", "copy headers include type + remarks");
   console.log("removal-layout-css PASS");
 })();
 
@@ -647,10 +668,12 @@ check("easeful-keep-finding", path.join(samplesRem, "AS_EasefulCourt_dead_tree-p
     const rows = parseReport(text, 'Non-TPC_Tree_removal_summary_SCO.pdf');
     assert(rows.length === 5, `${lab}: expected 5 rows, got ${rows.length}`);
     assert(rows.every(r => r.kind === 'removal'), `${lab}: kind`);
-    assert(rows.every(r => r.cells.length === 20), `${lab}: 20 cols`);
-    const c = rows.map(r => r.cells);
-    console.log(lab, c.map(r => ({ sn: r[0], tree: r[2], sci: r[3], zh: r[4], plant: r[14], norep: r[15], antC: r[17] })));
+    assert(rows.every(r => r.cells.length === 21), `${lab}: 21 cols`);
+    const parts = rows.map(r => removalParts(r));
+    const c = parts.map(p => p.d);
+    console.log(lab, parts.map(p => ({ type: p.type, sn: p.d[0], tree: p.d[2], sci: p.d[3], zh: p.d[4], plant: p.d[14], norep: p.d[15], antC: p.d[17] })));
     assert(c.every(r => r[1] === estate), `${lab}: estate ${c[0] && c[0][1]}`);
+    assert(parts.every(p => p.type === 'Non-TPC'), `${lab}: type from filename ${parts.map(p => p.type)}`);
     for (let i = 0; i < 5; i++) {
       const exp = base[i];
       const skipExtras = opts.skipExtras && opts.skipExtras.includes(exp.tree);
@@ -735,10 +758,12 @@ check("easeful-keep-finding", path.join(samplesRem, "AS_EasefulCourt_dead_tree-p
     const rows = parseReport(text, 'Non-TPC_Tree removal summary_20261027.pdf');
     assert(rows.length === 2, `${lab}: expected 2 rows, got ${rows.length}`);
     assert(rows.every(r => r.kind === 'removal'), `${lab}: kind`);
-    assert(rows.every(r => r.cells.length === 20), `${lab}: 20 cols`);
-    const c = rows.map(r => r.cells);
-    console.log(lab, c.map(r => ({ sn: r[0], tree: r[2], sci: r[3], zh: r[4], plant: r[14], remarks: r[19] })));
+    assert(rows.every(r => r.cells.length === 21), `${lab}: 21 cols`);
+    const parts = rows.map(r => removalParts(r));
+    const c = parts.map(p => p.d);
+    console.log(lab, parts.map(p => ({ type: p.type, sn: p.d[0], tree: p.d[2], sci: p.d[3], zh: p.d[4], plant: p.d[14], remarks: p.d[19] })));
     assert(c.every(r => r[1] === estate), `${lab}: estate ${c[0] && c[0][1]}`);
+    assert(parts.every(p => p.type === 'Non-TPC'), `${lab}: type from filename ${parts.map(p => p.type)}`);
     for (let i = 0; i < 2; i++) {
       const exp = base[i];
       const skipExtras = opts.skipExtras && opts.skipExtras.includes(exp.tree);
@@ -783,7 +808,7 @@ check("easeful-keep-finding", path.join(samplesRem, "AS_EasefulCourt_dead_tree-p
     'Non-TPC_Tree_removal_summary_SCO.pdf'
   );
   assert(scoLive.length === 5, 'sco live n ' + scoLive.length);
-  const scoSci = scoLive.map(r => r.cells[3] + '/' + r.cells[4]);
+  const scoSci = scoLive.map(r => removalParts(r).d[3] + '/' + removalParts(r).d[4]);
   assert(scoSci.join('|') === [
     'Unidentified/未能鑑別',
     'Michelia x alba/白蘭',
@@ -791,21 +816,24 @@ check("easeful-keep-finding", path.join(samplesRem, "AS_EasefulCourt_dead_tree-p
     'Pinus elliottii/濕地松(愛氏松)',
     'Casuarina equisetifolia/木麻黃'
   ].join('|'), 'sco live sci/zh: ' + scoSci.join('|'));
-  assert(scoLive.every(r => r.cells[19] === 'TNS-SCO-2026-002'), 'sco live remarks');
+  assert(scoLive.every(r => removalParts(r).d[19] === 'TNS-SCO-2026-002'), 'sco live remarks');
+  assert(scoLive.every(r => r.cells[0] === 'Non-TPC'), 'sco live type');
 
   const ftaOld = parseReport(
     normalizePdfText(fs.readFileSync(path.join(samplesRem, 'tpc-20261028-pdfjs.txt'), 'utf8')),
     'TPC_Tree_removal_summary_20261028.pdf'
   );
-  assert(ftaOld.length === 1 && ftaOld[0].cells[3] === 'Albizia lebbeck', 'fta0515 live sci');
-  assert(ftaOld[0].cells[19] === 'TY-FTA-2026-002', 'fta0515 live remarks: ' + ftaOld[0].cells[19]);
+  assert(ftaOld.length === 1 && removalParts(ftaOld[0]).d[3] === 'Albizia lebbeck', 'fta0515 live sci');
+  assert(removalParts(ftaOld[0]).d[19] === 'TY-FTA-2026-002', 'fta0515 live remarks: ' + removalParts(ftaOld[0]).d[19]);
+  assert(ftaOld[0].cells[0] === 'TPC', 'fta0515 live type');
 
   const spwa = parseReport(
     normalizePdfText(fs.readFileSync(path.join(samplesRem, 'tpc-20261103-pdfjs.txt'), 'utf8')),
     'TPC_Tree_removal_summary_20261103.pdf'
   );
-  assert(spwa.length === 1 && spwa[0].cells[3] === 'Macaranga tanarius var. tomentosa', 'spwa live sci');
-  assert(spwa[0].cells[19] === 'TY-SPWA-2026-001', 'spwa live remarks: ' + spwa[0].cells[19]);
+  assert(spwa.length === 1 && removalParts(spwa[0]).d[3] === 'Macaranga tanarius var. tomentosa', 'spwa live sci');
+  assert(removalParts(spwa[0]).d[19] === 'TY-SPWA-2026-001', 'spwa live remarks: ' + removalParts(spwa[0]).d[19]);
+  assert(spwa[0].cells[0] === 'TPC', 'spwa live type');
   console.log('removal-live-normalize remarks/sci PASS');
 })();
 
@@ -832,9 +860,11 @@ check("easeful-keep-finding", path.join(samplesRem, "AS_EasefulCourt_dead_tree-p
     if (opts.normalize) text = normalizePdfText(text);
     const rows = parseReport(text, 'Non-TPC_Tree_removal_summary_LKG.pdf');
     assert(rows.length === 1, `${lab}: expected 1 row, got ${rows.length}`);
-    assert(rows[0].kind === 'removal' && rows[0].cells.length === 20, `${lab}: kind/cols`);
-    const c = rows[0].cells;
-    console.log(lab, { sn: c[0], estate: c[1], tree: c[2], sci: c[3], zh: c[4], plant: c[14], antC: c[17], remarks: c[19] });
+    assert(rows[0].kind === 'removal' && rows[0].cells.length === 21, `${lab}: kind/cols`);
+    const part = removalParts(rows[0]);
+    const c = part.d;
+    console.log(lab, { type: part.type, sn: c[0], estate: c[1], tree: c[2], sci: c[3], zh: c[4], plant: c[14], antC: c[17], remarks: c[19] });
+    assert(part.type === 'Non-TPC', `${lab}: type from filename ${part.type}`);
     assert(c[0] === exp.sn, `${lab}: sn ${c[0]}`);
     assert(c[1] === exp.estate, `${lab}: estate ${c[1]}`);
     assert(c[2] === exp.tree, `${lab}: tree`);
@@ -878,6 +908,79 @@ check("easeful-keep-finding", path.join(samplesRem, "AS_EasefulCourt_dead_tree-p
   // pdftotext splits Height/DBH from Crown/Girth and lists dates in a
   // trailing column block, so measurements/dates are not reliable there.
   checkLkg('lkg-pdftotext', stem + '-pdftotext.txt', { skipMeas: true, skipDates: true });
+})();
+
+
+
+(() => {
+  const fn = classifyRemovalTypeFromFilename;
+  assert(fn('Non-TPC_Tree removal summary_20261027.pdf') === 'Non-TPC', 'fn Fu Tai');
+  assert(fn('Non-TPC_Tree removal summary_20261103.pdf') === 'Non-TPC', 'fn Non-TPC 1103');
+  assert(fn('Non-TPC_Tree_removal_summary_LKG.pdf') === 'Non-TPC', 'fn LKG');
+  assert(fn('Non-TPC_Tree_removal_summary_SCO.pdf') === 'Non-TPC', 'fn SCO');
+  assert(fn('Non TPC_foo.pdf') === 'Non-TPC', 'fn Non TPC space');
+  assert(fn('non_tpc_foo.pdf') === 'Non-TPC', 'fn non_tpc');
+  assert(fn('nonTPC.pdf') === 'Non-TPC', 'fn nonTPC');
+  // Substring trap: Non-TPC must not be classified as TPC
+  assert(fn('Non-TPC_Tree_removal_summary.pdf') === 'Non-TPC', 'substring trap hyphen');
+  assert(fn('TPC_Tree_removal_summary_20261028.pdf') === 'TPC', 'fn TPC 1028');
+  assert(fn('TPC_Tree_removal_summary_20261103.pdf') === 'TPC', 'fn TPC 1103');
+  assert(fn('tpc-20261028-pdfjs.pdf') === 'TPC', 'fn tpc- token');
+  assert(fn('random.pdf') === '', 'fn neither stays empty');
+  assert(fn('Tree_removal_summary.pdf') === '', 'fn unmarked stays empty');
+  assert(
+    classifyRemovalType('TNS-TY-2026-002.pdf', 'Tree Removal under Arboricultural Maintenance - non TPC applications') === 'Non-TPC',
+    'title fallback non TPC applications'
+  );
+  assert(
+    classifyRemovalType('foo.pdf', 'Application to Housing Department Tree Preservation Committee (TPC) for Tree Removal under Arboricultural Maintenance') === 'TPC',
+    'title fallback Tree Preservation Committee (TPC)'
+  );
+  assert(classifyRemovalType('foo.pdf', 'TPC(AM) Submission No. ________  some other form') === '', 'TPC(AM) blank is not a type');
+  assert(classifyRemovalType('foo.pdf', 'some other form') === '', 'no filename or title: empty');
+
+  const ftaText = normalizePdfText(fs.readFileSync(path.join(samplesRem, 'Non-TPC_Tree_removal_summary_FTA_20261027-pdfjs.txt'), 'utf8'));
+  const fta = parseReport(ftaText, 'Non-TPC_Tree removal summary_20261027.pdf');
+  assert(fta.length === 2 && fta.every(r => r.cells[0] === 'Non-TPC'), 'Fu Tai Non-TPC stamp: ' + fta.map(r => r.cells[0]));
+  const ftaTsv = fta.map(r => r.cells.join('\t')).join('\n');
+  assert(!ftaTsv.startsWith('S/N') && !ftaTsv.startsWith('TPC / Non-TPC'), 'copy still no header');
+  assert(ftaTsv.startsWith('Non-TPC\t'), 'copy first field Non-TPC: ' + ftaTsv.slice(0, 80));
+
+  const lkg = parseReport(
+    normalizePdfText(fs.readFileSync(path.join(samplesRem, 'Non-TPC_Tree_removal_summary_LKG-pdfjs.txt'), 'utf8')),
+    'Non-TPC_Tree_removal_summary_LKG.pdf'
+  );
+  assert(lkg.length === 1 && lkg[0].cells[0] === 'Non-TPC' && lkg[0].cells[20] === 'T&Y-LKG-2026-002', 'LKG Non-TPC + remarks');
+
+  const sco = parseReport(
+    normalizePdfText(fs.readFileSync(path.join(samplesRem, 'Non-TPC_Tree_removal_summary_SCO-pdfjs.txt'), 'utf8')),
+    'Non-TPC_Tree_removal_summary_SCO.pdf'
+  );
+  assert(sco.length === 5 && sco.every(r => r.cells[0] === 'Non-TPC'), 'SCO Non-TPC stamp');
+
+  const tpcFta = parseReport(
+    normalizePdfText(fs.readFileSync(path.join(samplesRem, 'tpc-20261028-pdfjs.txt'), 'utf8')),
+    'TPC_Tree_removal_summary_20261028.pdf'
+  );
+  assert(tpcFta.length === 1 && tpcFta[0].cells[0] === 'TPC' && tpcFta[0].cells[3] === 'FTA-T0515', 'FTA-T0515 TPC stamp');
+  const tpcTsv = tpcFta.map(r => r.cells.join('\t')).join('\n');
+  assert(tpcTsv.startsWith('TPC\t3\tFu Tai Estate\tFTA-T0515'), 'TPC copy first fields: ' + tpcTsv.slice(0, 80));
+
+  const spwa = parseReport(
+    normalizePdfText(fs.readFileSync(path.join(samplesRem, 'tpc-20261103-pdfjs.txt'), 'utf8')),
+    'TPC_Tree_removal_summary_20261103.pdf'
+  );
+  assert(spwa.length === 1 && spwa[0].cells[0] === 'TPC' && spwa[0].cells[3] === 'SPWA-0058', 'SPWA-0058 TPC stamp');
+
+  // Several PDFs: each row follows the file it came from
+  const mixed = fta.concat(tpcFta);
+  assert(mixed.filter(r => r.cells[0] === 'Non-TPC').length === fta.length, 'mixed keeps Non-TPC rows');
+  assert(mixed.filter(r => r.cells[0] === 'TPC').length === tpcFta.length, 'mixed keeps TPC rows');
+
+  console.log('removal-type-column PASS', {
+    ftaCopy: ftaTsv.split('\n')[0].split('\t').slice(0, 5).join('|'),
+    tpcCopy: tpcTsv.split('\t').slice(0, 5).join('|')
+  });
 })();
 
 
