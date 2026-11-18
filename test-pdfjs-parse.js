@@ -591,4 +591,17 @@ check("easeful-keep-finding", path.join(samplesRem, "AS_EasefulCourt_dead_tree-p
   console.log("mixed-comment-and-finding PASS", { obs: c[5] });
 })();
 
+(() => {
+  assert(/\.table-removal\s*\{/.test(html), "compact removal table CSS present");
+  assert(/table-layout:\s*fixed/.test(html), "removal table-layout fixed");
+  assert(/class="table-removal"/.test(html), "renderSection applies table-removal");
+  const dm = html.match(/const HEADERS_REMOVAL_DISPLAY = \[([\s\S]*?)\];/);
+  assert(dm, "HEADERS_REMOVAL_DISPLAY block");
+  const labels = [...dm[1].matchAll(/"([^"]*)"/g)].map(m => m[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim());
+  assert(labels.length === 20, "display headers 20: " + labels.length);
+  assert(labels[0] === "S/N" && /Remarks/i.test(labels[19]), "display ends with Remarks: " + labels[19]);
+  assert(HEADERS_REMOVAL.length === 20 && HEADERS_REMOVAL[19] === "Remarks (if any)", "copy headers unchanged");
+  console.log("removal-layout-css PASS");
+})();
+
 console.log('ALL PDFJS TESTS PASSED');

@@ -42,6 +42,72 @@
         th { background: #4caf50; color: white; position: sticky; top: 0; }
         thead th { user-select: none; -webkit-user-select: none; }
         tr:nth-child(even) { background: #f9f9f9; }
+
+        /* Tree Removal Summary: fit all 20 columns (incl. Remarks) on a normal desktop width. */
+        .table-removal {
+            table-layout: fixed;
+            width: 100%;
+            font-size: 11px;
+        }
+        .table-removal th,
+        .table-removal td {
+            padding: 4px 3px;
+            vertical-align: top;
+            white-space: normal;
+            overflow-wrap: break-word;
+            word-wrap: break-word;
+            line-height: 1.25;
+        }
+        .table-removal th {
+            font-size: 10px;
+            font-weight: 600;
+            line-height: 1.2;
+            overflow-wrap: normal;
+            word-break: normal;
+            hyphens: manual;
+        }
+        /* Keep short values (ratings, Yes/No, dates) on one line when the column allows. */
+        .table-removal td:nth-child(1),
+        .table-removal td:nth-child(6),
+        .table-removal td:nth-child(7),
+        .table-removal td:nth-child(8),
+        .table-removal td:nth-child(9),
+        .table-removal td:nth-child(10),
+        .table-removal td:nth-child(11),
+        .table-removal td:nth-child(12),
+        .table-removal td:nth-child(13),
+        .table-removal td:nth-child(15),
+        .table-removal td:nth-child(17),
+        .table-removal td:nth-child(18),
+        .table-removal td:nth-child(19) {
+            white-space: nowrap;
+            overflow-wrap: normal;
+        }
+        /* Narrow measurement / Yes-No / rating columns; give Reason and Remarks room to wrap. */
+        .table-removal th:nth-child(1),  .table-removal td:nth-child(1)  { width: 2.2%; }  /* S/N */
+        .table-removal th:nth-child(2),  .table-removal td:nth-child(2)  { width: 7%; }    /* Estate */
+        .table-removal th:nth-child(3),  .table-removal td:nth-child(3)  { width: 6%; }    /* Tree No. */
+        .table-removal th:nth-child(4),  .table-removal td:nth-child(4)  { width: 7.5%; }  /* Scientific Name */
+        .table-removal th:nth-child(5),  .table-removal td:nth-child(5)  { width: 3.8%; }  /* Chinese Name */
+        .table-removal th:nth-child(6),  .table-removal td:nth-child(6)  { width: 3.2%; }  /* Height */
+        .table-removal th:nth-child(7),  .table-removal td:nth-child(7)  { width: 3.2%; }  /* DBH */
+        .table-removal th:nth-child(8),  .table-removal td:nth-child(8)  { width: 3.6%; }  /* Crown Spread */
+        .table-removal th:nth-child(9),  .table-removal td:nth-child(9)  { width: 3.6%; }  /* Girth */
+        .table-removal th:nth-child(10), .table-removal td:nth-child(10) { width: 4.2%; }  /* Amenity */
+        .table-removal th:nth-child(11), .table-removal td:nth-child(11) { width: 3.6%; }  /* Form */
+        .table-removal th:nth-child(12), .table-removal td:nth-child(12) { width: 3.6%; }  /* Health */
+        .table-removal th:nth-child(13), .table-removal td:nth-child(13) { width: 4.4%; }  /* Structural */
+        .table-removal th:nth-child(14), .table-removal td:nth-child(14) { width: 8%; }    /* Reason */
+        .table-removal th:nth-child(15), .table-removal td:nth-child(15) { width: 4.4%; }  /* Compensatory Yes/No */
+        .table-removal th:nth-child(16), .table-removal td:nth-child(16) { width: 6.3%; }  /* Reason for No Replacement */
+        .table-removal th:nth-child(17), .table-removal td:nth-child(17) { width: 6%; }    /* Ant. Removal Date */
+        .table-removal th:nth-child(18), .table-removal td:nth-child(18) { width: 6.2%; }  /* Ant. Planting Date */
+        .table-removal th:nth-child(19), .table-removal td:nth-child(19) { width: 6%; }    /* Actual Date */
+        .table-removal th:nth-child(20), .table-removal td:nth-child(20) { width: 7.2%; }  /* Remarks */
+        /* Phones only: keep a readable min width and let the user scroll to Remarks. */
+        @media (max-width: 800px) {
+            .table-removal { min-width: 1000px; }
+        }
         .controls { margin: 12px 0; }
         .file-list { margin: 10px 0; font-size: 14px; }
         .file-list div { margin: 4px 0; }
@@ -1824,9 +1890,25 @@ function updateCopyButtons() {
     if (remBtn) remBtn.disabled = removalRows().length === 0;
 }
 
+// Display-only line breaks for Removal headers; clipboard / HEADERS_REMOVAL stay unchanged.
+const HEADERS_REMOVAL_DISPLAY = [
+    "S/N", "Estate / Project", "Tree No.", "Scientific Name", "Chinese Name",
+    "Height (m)", "DBH (mm)", "Crown Spread (m)", "Girth Size (mm)",
+    "Amenity Value<br>(High/<wbr>Medium/<wbr>Low)", "Form<br>(Good/<wbr>Average/<wbr>Poor)",
+    "Health<br>(Good/<wbr>Average/<wbr>Poor)", "Structural<br>Condition<br>(Good/<wbr>Average/<wbr>Poor)",
+    "Reason for<br>Tree Removal", "Compensatory /<br>Replacement Planting<br>(Yes / No)",
+    "Reason for No<br>Replacement Planting<br>(If applicable)",
+    "Anticipated Date of<br>Tree Removal", "Anticipated Date of<br>Compensatory Planting",
+    "Actual Date of<br>Compensatory Planting", "Remarks<br>(if any)"
+];
+
 function renderSection(title, headerList, rows) {
-    let html = `<div class="section-title">${title}（${rows.length} 行）</div><div class="table-wrap"><table><thead><tr>`;
-    headerList.forEach(h => html += `<th>${h}</th>`);
+    const isRemoval = headerList === HEADERS_REMOVAL;
+    const wrapClass = isRemoval ? "table-wrap table-wrap-removal" : "table-wrap";
+    const tableClass = isRemoval ? ' class="table-removal"' : "";
+    const displayHeaders = isRemoval ? HEADERS_REMOVAL_DISPLAY : headerList;
+    let html = `<div class="section-title">${title}（${rows.length} 行）</div><div class="${wrapClass}"><table${tableClass}><thead><tr>`;
+    displayHeaders.forEach(h => html += `<th>${h}</th>`);
     html += '</tr></thead><tbody>';
     rows.forEach(row => {
         html += '<tr>';
