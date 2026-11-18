@@ -239,6 +239,8 @@ assert(/BE-T0307_Hanger/.test(n3.replace(/\s+/g, '')) || /BE-T0307\s*_Hanger/.te
 // Tree-ID prefix → estate fallback (when text estate missing)
 (() => {
   assert(estateFromTreeId('TWH-G001') === 'Tai Wo Hau Estate', 'prefix TWH');
+  assert(estateFromTreeId('TWH-G001-NT1') === 'Tai Wo Hau Estate', 'prefix TWH full');
+  assert(estateFromTreeId('KSE-G002-2B_NT1') === 'Kwai Shing East Estate', 'prefix KSE full');
   assert(estateFromTreeId('SCO-A0005') === 'Shui Chuen O Estate', 'prefix SCO');
   assert(estateFromTreeId('HKFU-T0005') === 'Kam Fung Court', 'prefix HKFU');
   assert(estateFromTreeId('TY-T0315') === 'Tai Yuen Estate', 'prefix TY');
@@ -1116,14 +1118,14 @@ check("easeful-keep-finding", path.join(samplesRem, "AS_EasefulCourt_dead_tree-p
   }
 
   const expTrees = [
-    "KSE-G002", "KSE-G002", "KSE-G002", "KSE-G002",
+    "KSE-G002-2B_NT1", "KSE-G002-2B_NT2", "KSE-G002-2B_NT3", "KSE-G002-2B_NT4",
     "KSE-T0158", "KSE-T0149", "KSE-T0257", "KSE-T373"
   ];
   const expObs = [
-    "2B NT1 Dead tree",
-    "2B NT2 Dead tree",
-    "2B NT3 Dead tree",
-    "2B NT4 Dead branch",
+    "Dead tree",
+    "Dead tree",
+    "Dead tree",
+    "Dead branch",
     "Dead frond",
     "Drooping branches",
     "50% dieback",
@@ -1147,6 +1149,9 @@ check("easeful-keep-finding", path.join(samplesRem, "AS_EasefulCourt_dead_tree-p
     assert(rows.every(r => r.kind === "audit"), lab + ": kind audit");
     assert(c.every(r => r[0] === "AS"), lab + ": source AS");
     assert(c.every(r => r[2] === "AS-KSE-2026-003"), lab + ": case " + (c[0] && c[0][2]));
+    assert(c.every(r => r[1] === "Kwai Shing East Estate"), lab + ": estate " + (c[0] && c[0][1]));
+    assert(c.every(r => r[3] === "30/06/2026"), lab + ": date " + (c[0] && c[0][3]) + " (not today " + todayDMY() + ")");
+    assert(c.every(r => r[3] !== todayDMY() || todayDMY() === "30/06/2026"), lab + ": must not fall back to today");
     assert(c.every(r => isValidTreeId(r[4])), lab + ": every row has a valid Tree ID: " + c.map(r => r[4]));
     assert(c.every(r => String(r[4]).trim() !== ""), lab + ": no empty Tree ID");
     assert(c.every(r => !/未能自動擷取/.test(String(r[5] || ""))), lab + ": no placeholder obs");
@@ -1154,6 +1159,19 @@ check("easeful-keep-finding", path.join(samplesRem, "AS_EasefulCourt_dead_tree-p
     assert(c.map(r => r[5]).join("|") === expObs.join("|"), lab + ": obs " + c.map(r => r[5]).join("|"));
     console.log(lab, "PASS", got);
   }
+
+  // Caption vs Findings: same full IDs, still 8 unique rows (no dups).
+  const kseFull = fs.readFileSync(path.join(samplesRem, "AS_Audit_KwaiShingEast_KSE-2026-003-pdftotext.txt"), "utf8");
+  const kseBoth = parseReport(kseFull, "AS_Audit_KwaiShingEast_KSE-2026-003.pdf");
+  assert(kseBoth.length === 8, "kse findings+captions still 8, got " + kseBoth.length);
+  const kseCaptionsOnly = kseFull.replace(/Findings\s*:?\s*[\s\S]*?(?=\bPhotos\b)/i, "Findings:\n");
+  const kseFromPhotos = parseReport(kseCaptionsOnly, "AS_Audit_KwaiShingEast_KSE-2026-003.pdf");
+  const kseCapCells = kseFromPhotos.map(r => r.cells || r);
+  assert(kseFromPhotos.length === 8, "kse-captions-only: expected 8, got " + kseFromPhotos.length + ": " + kseCapCells.map(r => r[4] + "=" + r[5]).join(" | "));
+  assert(kseCapCells.map(r => r[4]).join(",") === expTrees.join(","), "kse-captions-only trees " + kseCapCells.map(r => r[4]));
+  assert(kseCapCells.map(r => r[5]).join("|") === expObs.join("|"), "kse-captions-only obs");
+  assert(kseCapCells.every(r => r[3] === "30/06/2026"), "kse-captions-only date");
+  console.log("kse-captions-only PASS");
 })();
 
 
@@ -1176,7 +1194,7 @@ check("easeful-keep-finding", path.join(samplesRem, "AS_EasefulCourt_dead_tree-p
 (() => {
   const expTrees = [
     "TWH-T0250", "TWH-T0347", "TWH-T0424", "TWH-T0067",
-    "TWH-T0112", "TWH-T0119", "TWH-T0127", "TWH-G001", "TWH-G001"
+    "TWH-T0112", "TWH-T0119", "TWH-T0127", "TWH-G001-NT1", "TWH-G001-NT1"
   ];
   const expObs = [
     "Dead branch",
@@ -1186,8 +1204,8 @@ check("easeful-keep-finding", path.join(samplesRem, "AS_EasefulCourt_dead_tree-p
     "No foliage",
     "Dead branch",
     "Dead branch",
-    "NT1 Main trunk broken",
-    "NT1 No living foliage"
+    "Main trunk broken",
+    "No living foliage"
   ];
   const twhDumps = [
     ["twh-pdftotext", "AS_Audit_TaiWoHau_TWH-2026-007-pdftotext.txt"],
@@ -1210,10 +1228,11 @@ check("easeful-keep-finding", path.join(samplesRem, "AS_EasefulCourt_dead_tree-p
     assert(c.every(r => isValidTreeId(r[4])), lab + ": every row has a valid Tree ID");
     assert(c.map(r => r[4]).join(",") === expTrees.join(","), lab + ": trees " + c.map(r => r[4]));
     assert(c.map(r => r[5]).join("|") === expObs.join("|"), lab + ": obs " + c.map(r => r[5]).join("|"));
-    const g001 = c.filter(r => r[4] === "TWH-G001").map(r => r[5]);
-    assert(g001.length === 2, lab + ": two G001 rows, got " + g001.length);
-    assert(g001[0] === "NT1 Main trunk broken" && g001[1] === "NT1 No living foliage", lab + ": G001 obs separate: " + g001.join(" | "));
-    assert(!c.some(r => /NT1 Main trunk broken NT1/i.test(String(r[5] || ""))), lab + ": G001 observations must not be merged");
+    const g001 = c.filter(r => r[4] === "TWH-G001-NT1").map(r => r[5]);
+    assert(g001.length === 2, lab + ": two TWH-G001-NT1 rows, got " + g001.length);
+    assert(g001[0] === "Main trunk broken" && g001[1] === "No living foliage", lab + ": G001-NT1 obs separate: " + g001.join(" | "));
+    assert(!c.some(r => /NT1 Main trunk broken/i.test(String(r[5] || ""))), lab + ": NT1 must be in the Tree ID, not merged into obs");
+    assert(!c.some(r => r[4] === "TWH-G001"), lab + ": must use full TWH-G001-NT1, not short G001");
     return got;
   }
   for (const [lab, file, doNorm] of twhDumps) {
@@ -1269,6 +1288,34 @@ check("easeful-keep-finding", path.join(samplesRem, "AS_EasefulCourt_dead_tree-p
   const variantRows = parseReport(variantSrc, "AS_Audit_TaiWoHau_TWH-2026-007.pdf");
   assertTwhRows("twh-caption-label-variants", variantRows);
   console.log("twh-caption-label-variants PASS");
+})();
+
+
+
+// extractAuditDate: YYYY/MM/DD and D/M/YYYY from the form Date field only.
+(() => {
+  assert(extractAuditDate("Audit Report on Routine Maintenance\nDate: 2026/08/11") === "11/08/2026", "YYYY/MM/DD TWH");
+  assert(extractAuditDate("Audit Report on Routine Maintenance\nDate: 30/06/2026") === "30/06/2026", "DD/MM/YYYY KSE");
+  assert(extractAuditDate("Audit Report\nDate: 3/6/2026") === "03/06/2026", "D/M/YYYY padded");
+  assert(extractAuditDate("Date: 30/06/2026") === "30/06/2026", "Date: DMY without title");
+  assert(extractAuditDate("Date: 2026/08/11") === "11/08/2026", "Date: YMD without title");
+  const kseText = fs.readFileSync(path.join(samplesRem, "AS_Audit_KwaiShingEast_KSE-2026-003-pdftotext.txt"), "utf8");
+  assert(extractAuditDate(kseText) === "30/06/2026", "KSE pdftotext Date");
+  assert(extractAuditDate(normalizePdfText(kseText)) === "30/06/2026", "KSE pdftotext live Date");
+  const ksePdfjs = fs.readFileSync(path.join(samplesRem, "AS_Audit_KwaiShingEast_KSE-2026-003-pdfjs.txt"), "utf8");
+  assert(extractAuditDate(normalizePdfText(ksePdfjs)) === "30/06/2026", "KSE pdfjs live Date: " + extractAuditDate(normalizePdfText(ksePdfjs)));
+  const twhText = fs.readFileSync(path.join(samplesRem, "AS_Audit_TaiWoHau_TWH-2026-007-pdftotext.txt"), "utf8");
+  assert(extractAuditDate(twhText) === "11/08/2026", "TWH Date stays 11/08/2026");
+  // A body date must not be used if there is no Date: field.
+  assert(extractAuditDate("Submitted on 01/01/2020") === "", "no Date: field");
+  // Full IDs are valid Findings IDs; Removal-style prefix-digits and case nos are not.
+  assert(isValidTreeId("KSE-G002-2B_NT1"), "full KSE id");
+  assert(isValidTreeId("KSE-G002-2B-NT1"), "hyphenated NT still valid");
+  assert(isValidTreeId("TWH-G001-NT1"), "full TWH id");
+  assert(isValidTreeId("KSE-T0158") && isValidTreeId("KSE-T373"), "plain KSE trees");
+  assert(!isValidTreeId("SPWA-0058"), "prefix-digits still invalid");
+  assert(!isValidTreeId("AS-KSE-2026-003"), "case no still invalid");
+  console.log("extractAuditDate-and-full-tree-id PASS");
 })();
 
 

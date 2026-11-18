@@ -33,6 +33,30 @@
         .btn.orange:hover { background: #e65100; }
         .section-title { margin: 18px 0 8px; font-size: 16px; font-weight: 700; color: #1b5e20; }
         .table-wrap { overflow-x: auto; margin-bottom: 16px; }
+        /* TNS has 18 columns; let the table grow and scroll instead of squeezing
+           Tree ID / Observation until a token wraps mid-word (Dead branc h, KSE-). */
+        .table-tns {
+            width: max-content;
+            min-width: 100%;
+            table-layout: auto;
+        }
+        .table-tns th,
+        .table-tns td {
+            overflow-wrap: normal;
+            word-break: keep-all;
+            word-wrap: normal;
+            hyphens: none;
+            white-space: normal;
+        }
+        .table-tns th:nth-child(5),
+        .table-tns td:nth-child(5) { /* Tree ID */
+            white-space: nowrap;
+            min-width: 12em;
+        }
+        .table-tns th:nth-child(6),
+        .table-tns td:nth-child(6) { /* Observation: wrap only at spaces */
+            min-width: 14em;
+        }
         .status { margin: 10px 0; padding: 10px; border-radius: 6px; }
         .status.info { background: #e3f2fd; }
         .status.success { background: #e8f5e9; }
@@ -241,7 +265,7 @@ async function handleFiles(files) {
 }
 
 const KNOWN_PLACES = [
-    "Kwai Chung 1 Estate", "Kwai Chung 2 Estate", "Shatin Pass Estate",
+    "Kwai Chung 1 Estate", "Kwai Chung 2 Estate", "Kwai Shing East Estate", "Shatin Pass Estate",
     "Kam Fung Court", "Mei Lam Estate", "Mei Tin Estate", "Sun Chui Estate", "Yan On Estate", "Yan Tin Estate",
     "Tin Yiu (2) Estate", "Tin Yiu (1) Estate", "Tin Shui (1) Estate", "Tin Shui (2) Estate",
     "Hoi Tai Factory Estate", "Butterfly Estate", "Kin Sang Estate", "Shek Mun Estate", "Shek Yam Estate",
@@ -257,7 +281,7 @@ const KNOWN_PLACES = [
     "Pok Hong Estate", "Sha Kok Estate", "Sui Wo Court", "Sun Tin Wai Estate", "Wo Che Estate",
     "Fu Heng Estate", "Fu Shin Estate", "Fu Tip Estate", "Kwong Fuk Estate", "Po Heung Estate",
     "Tai Wo Hau Estate", "Tai Wo Estate", "Wan Tau Tong Estate",
-    "Kwai Chung 1", "Kwai Chung 2", "Shatin Pass",
+    "Kwai Chung 1", "Kwai Chung 2", "Kwai Shing East", "Shatin Pass",
     "Kam Fung", "Mei Lam", "Mei Tin", "Sun Chui", "Yan Tin", "Yan On", "Tin Yiu", "Tin Shui", "Hoi Tai Factory", "Butterfly", "Kin Sang", "Shek Mun", "Shek Yam",
     "Chung On", "Fung Wo", "Lee On", "Lung Hang", "Lek Yuen", "Ching Ho", "Yau Oi", "Tai Yuen", "Tai Hing", "On Ting", "On Yam", "Fu Tai", "Shui Pin Wai",
     "Shui Chuen O", "Ching Tin", "Leung King", "Lung Yat", "Po Tin", "Sam Shing", "Tin King", "Wo Tin", "Wu King",
@@ -310,6 +334,7 @@ const TREE_PREFIX_ESTATE = {
     "SPA": "Shatin Pass Estate",
     "KC1": "Kwai Chung 1 Estate",
     "KC2": "Kwai Chung 2 Estate",
+    "KSE": "Kwai Shing East Estate",
     "POT": "Po Tin Estate",
     "SS": "Sam Shing Estate",
     "TH": "Tai Hing Estate",
@@ -405,6 +430,8 @@ function isWeakEstate(estate) {
     const e = String(estate).trim();
     if (!e || e.length < 3) return true;
     if (/^Unknown\s+Estate$/i.test(e)) return true;
+    // pdftotext may put a case number under Location:
+    if (/^(?:AS|TNS|TY|TMU)(?:-[A-Z0-9]+)+-\d{4}-\d{3}$/i.test(e)) return true;
     return false;
 }
 
@@ -581,9 +608,19 @@ function normalizeDMY(s) {
 
 function extractAuditDate(text) {
     const src = String(text || "");
-    const afterTitle = src.match(/Audit\s+Report[\s\S]{0,2500}?\bDate\s*:\s*(\d{4})\s*[\/\-]\s*(\d{1,2})\s*[\/\-]\s*(\d{1,2})/i);
-    const m = afterTitle || src.match(/\bDate\s*:\s*(\d{4})\s*[\/\-]\s*(\d{1,2})\s*[\/\-]\s*(\d{1,2})/i);
-    if (m) return `${m[3].padStart(2, "0")}/${m[2].padStart(2, "0")}/${m[1]}`;
+    const datePat = "\\bDate\\s*:\\s*(\\d{1,4})\\s*[\\/\\-]\\s*(\\d{1,2})\\s*[\\/\\-]\\s*(\\d{1,4})";
+    const afterTitle = src.match(new RegExp("Audit\\s+Report[\\s\\S]{0,2500}?" + datePat, "i"));
+    const m = afterTitle || src.match(new RegExp(datePat, "i"));
+    if (!m) return "";
+    const a = m[1], b = m[2], c = m[3];
+    // YYYY/MM/DD (Tai Wo Hau 2026/08/11 → 11/08/2026)
+    if (a.length === 4 && c.length <= 2) {
+        return `${c.padStart(2, "0")}/${b.padStart(2, "0")}/${a}`;
+    }
+    // D/M/YYYY or DD/MM/YYYY (KSE 30/06/2026 → 30/06/2026)
+    if (a.length <= 2 && c.length === 4) {
+        return `${a.padStart(2, "0")}/${b.padStart(2, "0")}/${c}`;
+    }
     return "";
 }
 
@@ -591,7 +628,7 @@ function extractEstate(text, filename) {
     const stop = /(?=\s*(?:Findings|Photos|Referral|Audited|Date\s*:|Email|From\s*:|To\s*:|cc\s*:|Inspection|Contract|Location\s*:|Case\s*No|Tree\s*Information|Agreement\s+No))/i;
     let raw = "";
     const loc = text.match(new RegExp("Location\\s*:\\s*(.+?)" + stop.source, "i"));
-    if (loc) raw = loc[1];
+    if (loc && !isWeakEstate(loc[1].replace(/\s+/g, " ").trim()) && !/^(?:AS|TNS|TY|TMU)(?:-[A-Z0-9]+)+-\d{4}-\d{3}$/i.test(loc[1].replace(/\s+/g, " ").trim())) raw = loc[1];
     if (!raw) {
         const ed = text.match(new RegExp("Estate\\s*\\/?\\s*District\\s*:\\s*(.+?)" + stop.source, "i"));
         if (ed) raw = ed[1];
@@ -622,9 +659,20 @@ function normalizeTreeId(raw) {
     return String(raw || "").replace(/\s+/g, "").toUpperCase();
 }
 
+/** Findings Tree ID: compact spaces, hyphenate only the core PREFIX-ID (LSN_A0001 → LSN-A0001).
+ *  Keep printed punctuation after that, so KSE-G002-2B_NT1 stays with an underscore before NT.
+ */
+function normalizeAuditTreeId(raw) {
+    let s = normalizeTreeId(raw);
+    s = s.replace(/^([A-Z]{1,6}\d{0,2})_((?:LL\d{1,2}|[A-Z]\d{3,5}))(?=[-_]|$)/, "$1-$2");
+    return s;
+}
+
 function isValidTreeId(id) {
-    // LEO-A0001, HKFU-T0005, TNY2-T0171, BE-T0307, SM-T0209, LSN-LL1
-    if (/^[A-Z]{1,6}\d{0,2}-(?:LL\d{1,2}|[A-Z]\d{3,5})$/.test(id)) return true;
+    // Core: LEO-A0001, LSN-LL1. Optional group/NT tags as printed:
+    // KSE-G002-2B_NT1, TWH-G001-NT1 (hyphen or underscore before NT / 2B).
+    // Do not accept prefix-digits (SPWA-0058) or case numbers (AS-KSE-2026-003).
+    if (/^[A-Z]{1,6}\d{0,2}-(?:LL\d{1,2}|[A-Z]\d{3,5})(?:[-_](?:NT\d+|\d+[A-Z]))*$/.test(id)) return true;
     // Odd short tokens e.g. UN1
     if (/^UN\d{1,3}$/i.test(id)) return true;
     return false;
@@ -675,8 +723,12 @@ function pushFinding(findings, treeId, obs) {
 }
 
 // AS Audit Findings tokens: PREFIX-T0250_obs, PREFIX-G001-NT1_obs, PREFIX-G002-2B_NT1_obs.
+// Tree ID is the full identifier before the observation (KSE-G002-2B_NT1, TWH-G001-NT1).
 // Do not use PREFIX-digits (that would invent IDs from case numbers).
 const AUDIT_TREE_ID_SRC = "[A-Z]{1,6}\\d{0,2}\\s*[-_]\\s*(?:LL\\s*\\d{1,2}|[A-Z]\\s*\\d{3,5})";
+// Group / NT tags that belong in the Tree ID, not the observation (2B, NT1).
+const AUDIT_ID_TAG_SRC = "(?:NT\\s*\\d+|\\d+[A-Z])";
+const AUDIT_FULL_ID_SRC = AUDIT_TREE_ID_SRC + "(?:\\s*[-_]\\s*" + AUDIT_ID_TAG_SRC + ")*";
 // Bare continuation after a group tree, e.g. NT1_No living foliage or 2B_NT2_Dead tree.
 const AUDIT_BARE_CONT_SRC = "(?:\\d+[A-Z]\\s*[_-]?\\s*)?NT\\s*\\d+\\s*_";
 
@@ -706,27 +758,57 @@ function findAuditFindingTokenStarts(chunk) {
     return out;
 }
 
+function parseContinuationPrefix(raw) {
+    const m = String(raw || "").trim().match(/^(?:(\d+[A-Z])\s*[_-]\s*)?(NT\s*\d+)\s*[_:\-=]+([\s\S]*)$/i);
+    if (!m) return null;
+    return {
+        group: m[1] ? m[1].replace(/\s+/g, "").toUpperCase() : "",
+        nt: m[2].replace(/\s+/g, "").toUpperCase(),
+        obs: m[3]
+    };
+}
+
+/** Attach a bare NT1_ / 2B_NT2_ token to the previous tree group. Keep the printed NT. */
+function extendTreeIdWithContinuation(prevId, raw) {
+    const cont = parseContinuationPrefix(raw);
+    if (!cont) return { treeId: prevId, obs: raw };
+    const prev = normalizeAuditTreeId(prevId);
+    const sameNt = new RegExp("[-_]" + cont.nt + "$", "i").test(prev);
+    const sameGroup = !cont.group || new RegExp("[-_]" + cont.group + "[-_]" + cont.nt + "$", "i").test(prev);
+    if (sameNt && sameGroup) return { treeId: prev, obs: cont.obs };
+    let base = prev.replace(/[-_]NT\d+$/i, "");
+    let ntSep = "_";
+    const prevNt = prev.match(/[-_]NT\d+$/i);
+    if (prevNt) ntSep = prevNt[0].charAt(0);
+    if (cont.group) {
+        base = base.replace(new RegExp("[-_]" + cont.group + "$", "i"), "");
+        return { treeId: normalizeAuditTreeId(base + "-" + cont.group + ntSep + cont.nt), obs: cont.obs };
+    }
+    return { treeId: normalizeAuditTreeId(base + ntSep + cont.nt), obs: cont.obs };
+}
+
 function parseAndPushFindingToken(raw, findings, state) {
     let s = String(raw || "").trim();
     if (!s) return;
     const un = s.match(/^#\s*\d+\s+(UN\d{1,3})\s+([\s\S]+)/i);
     if (un) {
-        if (pushFinding(findings, normalizeTreeId(un[1]), un[2])) state.lastTreeId = normalizeTreeId(un[1]);
+        const uid = normalizeTreeId(un[1]);
+        if (pushFinding(findings, uid, un[2])) state.lastTreeId = uid;
         return;
     }
     const hash = s.match(/^#\s*\d+\s*/);
     if (hash) s = s.slice(hash[0].length).trim();
-    const idm = s.match(new RegExp("^(" + AUDIT_TREE_ID_SRC + ")", "i"));
+    const idm = s.match(new RegExp("^(" + AUDIT_FULL_ID_SRC + ")", "i"));
     if (idm) {
-        const treeId = normalizeTreeId(idm[1].replace(/_/g, "-"));
-        // Keep suffix tags (NT1, 2B) but drop the hyphen/underscore that joins them to the ID.
+        const treeId = normalizeAuditTreeId(idm[1]);
         const obsRaw = s.slice(idm[0].length).replace(/^\s*[_:\-=]+/, "");
         if (pushFinding(findings, treeId, obsRaw)) state.lastTreeId = treeId;
         else if (isValidTreeId(treeId)) state.lastTreeId = treeId;
         return;
     }
     if (state.lastTreeId && isBareContinuationAt(s, 0)) {
-        pushFinding(findings, state.lastTreeId, s);
+        const ext = extendTreeIdWithContinuation(state.lastTreeId, s);
+        if (pushFinding(findings, ext.treeId, ext.obs)) state.lastTreeId = ext.treeId;
     }
 }
 
@@ -802,7 +884,7 @@ function extractFindings(text) {
         || /[A-Z]{1,6}\d{0,2}\s*[-_]\s*(?:LL\s*\d{1,2}|[A-Z]\s*\d{3,5})\s*[_\-]/.test(findingsProbe);
 
     if (findings.length > 0) {
-        // Keep distinct observations for the same Tree ID (e.g. KSE-G002 NT1–NT4).
+        // Keep distinct observations for the same Tree ID (e.g. KSE-G002-2B_NT1 vs NT2).
         // Still collapse exact duplicates from Findings + photo captions.
         return uniqueValidFindings(findings);
     }
@@ -2222,7 +2304,7 @@ const HEADERS_REMOVAL_DISPLAY = [
 function renderSection(title, headerList, rows) {
     const isRemoval = headerList === HEADERS_REMOVAL;
     const wrapClass = isRemoval ? "table-wrap table-wrap-removal" : "table-wrap";
-    const tableClass = isRemoval ? ' class="table-removal"' : "";
+    const tableClass = isRemoval ? ' class="table-removal"' : ' class="table-tns"';
     const displayHeaders = isRemoval ? HEADERS_REMOVAL_DISPLAY : headerList;
     let html = `<div class="section-title">${title}（${rows.length} 行）</div><div class="${wrapClass}"><table${tableClass}><thead><tr>`;
     displayHeaders.forEach(h => html += `<th>${h}</th>`);
