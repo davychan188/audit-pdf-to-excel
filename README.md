@@ -17,6 +17,8 @@ Drag and drop Audit Report, TMU Site Check Report (TMU-Form-03), or Tree Removal
 
 Clipboard is tab-separated. Empty cells still emit tabs so columns stay aligned when pasting.
 
+AS Audit rows whose Findings/Observation is only the stock sentence *No general comment on tree works maintenance and horticultural reminders after regular audit inspection.* are omitted from the TNS table and from **複製 TNS** (wrapping, extra spaces, and a trailing period are ignored). Rows that also contain a real finding are kept.
+
 ## Privacy / 私隱
 
 All processing happens in your browser (pdf.js via CDN). Files are **not** uploaded to any server.

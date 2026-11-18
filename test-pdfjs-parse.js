@@ -535,4 +535,60 @@ for (const [lab, stem, filename, exp] of tmuForms) {
   console.log("audit-deadline-empty PASS");
 })();
 
+
+// AS Audit: skip TNS rows whose Findings/Observation is only the stock
+// "No general comment on tree works maintenance..." sentence.
+(() => {
+  assert(typeof isStockNoGeneralComment === "function", "isStockNoGeneralComment exported");
+  const sentence = "No general comment on tree works maintenance and horticultural reminders after regular audit inspection.";
+  assert(isStockNoGeneralComment(sentence), "exact sentence");
+  assert(isStockNoGeneralComment(sentence.replace(/\.$/, "")), "no trailing period");
+  assert(isStockNoGeneralComment("No general comment on tree works maintenance and horticultural\nreminders after regular audit inspection."), "wrapped");
+  assert(isStockNoGeneralComment("No  general   comment on tree  works maintenance and horticultural reminders after regular audit inspection."), "extra spaces");
+  assert(isStockNoGeneralComment("No generalcomment on tree works maintenance and horticultural reminders after regular audit inspection."), "pdf.js missing space");
+  assert(!isStockNoGeneralComment(""), "empty is not stock");
+  assert(!isStockNoGeneralComment("Dead tree"), "real finding is not stock");
+  assert(!isStockNoGeneralComment(sentence + " Dead tree"), "stock plus real finding is kept");
+  assert(!isStockNoGeneralComment("Dead tree. " + sentence), "real finding plus stock is kept");
+  console.log("stock-no-comment-matcher PASS");
+})();
+
+const noCommentDumps = [
+  ["no-comment-pdftotext", path.join(samplesRem, "AS_CheungOn_no_comment-pdftotext.txt")],
+  ["no-comment-layout", path.join(samplesRem, "AS_CheungOn_no_comment-layout.txt")],
+  ["no-comment-pdfjs", path.join(samplesRem, "AS_CheungOn_no_comment-pdfjs.txt")]
+];
+for (const [lab, file] of noCommentDumps) {
+  const text = fs.readFileSync(file, "utf8");
+  const rows = parseReport(text, "AS-Cheung-On-no-comment.pdf");
+  const obs = rows.map(r => (r.cells || r)[5]).join(" | ");
+  assert(rows.length === 0, `${lab}: expected 0 TNS rows, got ${rows.length}: ${obs}`);
+  console.log(lab, "PASS (0 rows)");
+}
+
+check("easeful-keep-finding", path.join(samplesRem, "AS_EasefulCourt_dead_tree-pdftotext.txt"), {
+  n: 1,
+  kind: "audit",
+  caseNo: "AS-EAC-2026-003",
+  estate: "Easeful Court",
+  date: "18/11/2026",
+  trees: ["EAC-T0057"],
+  obs: ["Dead tree"]
+});
+
+(() => {
+  const text = fs.readFileSync(path.join(samplesRem, "AS_mixed_comment_and_finding-pdftotext.txt"), "utf8");
+  const rows = parseReport(text, "AS-SWK-2026-004.pdf");
+  assert(rows.length === 1, "mixed: keep the real finding, got " + rows.length);
+  const c = rows[0].cells;
+  assert(rows[0].kind === "audit" && c[0] === "AS", "mixed source AS");
+  assert(c[1] === "Shek Wai Kok Estate", "mixed estate: " + c[1]);
+  assert(c[2] === "AS-SWK-2026-004", "mixed case: " + c[2]);
+  assert(c[4] === "SWK-A0001", "mixed tree: " + c[4]);
+  assert(/Dead tree/i.test(c[5]), "mixed obs keeps Dead tree: " + c[5]);
+  assert(!isStockNoGeneralComment(c[5]), "mixed obs is not stock-only");
+  assert(c[9] === "", "mixed AS Case deadline stays empty");
+  console.log("mixed-comment-and-finding PASS", { obs: c[5] });
+})();
+
 console.log('ALL PDFJS TESTS PASSED');

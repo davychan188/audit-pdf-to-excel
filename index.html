@@ -1733,6 +1733,27 @@ function parseTmuSiteCheckForm(text, filename) {
     return rows;
 }
 
+
+// Stock AS Audit conclusion — not a real tree finding. Skip the row in TNS
+// extract/copy when Observation/Findings is essentially this sentence alone
+// (ignore wrap, extra/missing spaces, trailing punctuation). Keep the row if
+// a real finding is present alongside it.
+const STOCK_NO_GENERAL_COMMENT_COMPACT =
+    "nogeneralcommentontreeworksmaintenanceandhorticulturalremindersafterregularauditinspection";
+
+function isStockNoGeneralComment(text) {
+    const compact = String(text || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+    return compact.length > 0 && compact === STOCK_NO_GENERAL_COMMENT_COMPACT;
+}
+
+function findingsBlockIsStockNoGeneralComment(text) {
+    const fm = String(text || "").match(/Findings\s*:?\s*([\s\S]*?)(?=\s*Photos\b|\s*Audited\b|\s*Agreement\s+No\.|\s*Provision\s+of\s+arboricultural|$)/i);
+    if (!fm) return false;
+    let prose = fm[1].replace(/[\u0000-\u001f\u0085\u2028\u2029]/g, " ").replace(/\s+/g, " ").trim();
+    prose = prose.replace(/\s*(Agreement\s+No\.|Provision\s+of\s+arboricultural|AS\s+Contractor|Contract\s+No\.|Audited\s+by|Photos\b|#\s*\d+).*$/i, "").trim();
+    return isStockNoGeneralComment(prose);
+}
+
 function parseReport(text, filename) {
     const raw = String(text || "");
     if (isTmuSiteCheckForm(raw) || isTmuSiteCheckForm(normalizePdfText(raw))) {
@@ -1749,7 +1770,8 @@ function parseReport(text, filename) {
     let dateReceived = extractAuditDate(text);
     if (!dateReceived) dateReceived = todayDMY();
 
-    const unique = extractFindings(text);
+    const uniqueAll = extractFindings(text);
+    const unique = uniqueAll.filter(f => !isStockNoGeneralComment(f.obs));
     const caseOut = caseNo || caseFromFilename(filename) || "";
 
     for (const f of unique) {
@@ -1769,6 +1791,11 @@ function parseReport(text, filename) {
     }
 
     if (rows.length === 0 && (caseOut || estate)) {
+        // Do not invent a placeholder row for a genuine no-comment audit conclusion
+        if ((uniqueAll.length && uniqueAll.every(f => isStockNoGeneralComment(f.obs)))
+            || findingsBlockIsStockNoGeneralComment(text)) {
+            return rows;
+        }
         const rowEstate = resolveEstate(estate, "", caseOut) || "Unknown Estate";
         rows.push({
             kind: "audit",
