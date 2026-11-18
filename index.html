@@ -446,6 +446,10 @@ function normalizePlace(raw) {
     return s.split(/\s+/).slice(0, 5).join(" ");
 }
 
+// Remark / case tokens such as TNS-SCO-2026-002, TY-FTA-2026-001, TY-SPWA-2026-001.
+// Do not use for Tree Nos. (FTA-T0410, SPWA-0058) — those lack -YYYY-NNN.
+const REMOVAL_CASE_TOKEN_SRC = "(?:AS|TNS|TY)(?:-[A-Z0-9]+)+-\\d{4}-\\d{3}";
+
 function normalizePdfText(text) {
     let t = String(text || "");
     // 1) Glue dashes and date slashes (pdf.js: "AS - T NS", "202 6 / 0 7 / 13")
@@ -460,9 +464,16 @@ function normalizePdfText(text) {
         t = next;
     }
     // 2b) Unglue S/N↔tree / case↔S/N / N\/A / consecutive dates (table PDFs)
-    t = t.replace(/((?:AS|TNS)(?:-[A-Z0-9]+)+-\d{4}-\d{3})(\d)/gi, "$1 $2");
+    // Split N/A from a following case token before token unglue, otherwise
+    // "N/A TY-FTA-..." becomes "N/ATY-FTA-..." and is read as ATY-FTA-...
+    t = t.replace(/(N\/A)(?=[A-Z0-9])/gi, "$1 ");
+    // Include TY-FTA-2026-001 (not only AS/TNS) so "001 35" does not become S/N 135
+    // and "001Signature" does not swallow Remarks.
+    t = t.replace(new RegExp("(" + REMOVAL_CASE_TOKEN_SRC + ")([0-9A-Za-z])", "gi"), "$1 $2");
     t = t.replace(/(\d)([A-Z]{1,6}\d{0,2}-(?:LL\d{1,2}|[A-Z]\d{3,5}))(?![0-9A-Za-z])/g, "$1 $2");
-    t = t.replace(/([A-Za-z0-9\/])((?:AS|TNS)(?:-[A-Z0-9]+)+-\d{4}-\d{3})(?![0-9])/gi, "$1 $2");
+    t = t.replace(new RegExp("([A-Za-z0-9\/])(" + REMOVAL_CASE_TOKEN_SRC + ")(?![0-9])", "gi"), "$1 $2");
+    // All-caps estate (FU TAI ESTATE) glues to a following binomial: FUTAIESTATEAcacia mangium
+    t = t.replace(/([A-Z]{3,})(Unidentified|[A-Z][a-z]{2,}\s+(?:spp\.|[x\u00d7X]\s+[a-z]{3,}|[a-z]{3,}(?:\s+(?:var\.|subsp\.)\s+[a-z]+)?))/g, "$1 $2");
     t = t.replace(/(\d{4})(\d{1,2}\/\d{1,2}\/\d{4})/g, "$1 $2");
     // Unglue dateN/A and N/AN/A (pdf.js + alphanumeric glue: 17/11/2026N/AN/A)
     t = t.replace(/(\d)(N\/A)/gi, "$1 $2");
@@ -797,7 +808,7 @@ function findNoReplacementReason(text) {
 function extractRemovalCaseNo(text, filename) {
     const fromText = caseTokenFromText(text);
     if (fromText) return fromText;
-    const m = text.match(/\b(TNS-[A-Z0-9]+(?:-[A-Z0-9]+)*-\d{4}-\d{3})\b/i);
+    const m = String(text || "").match(new RegExp("\\b(" + REMOVAL_CASE_TOKEN_SRC + ")\\b", "i"));
     if (m) return m[1].toUpperCase();
     return caseFromFilename(filename) || "";
 }
@@ -882,8 +893,9 @@ function normalizeRemovalPdfText(text) {
     t = t.replace(/(\d)(High|Medium|Low)\b/gi, "$1 $2");
     t = t.replace(/([a-z\)）])(Yes|No)\b/gi, "$1 $2");
     t = t.replace(/\b(Yes|No)(?=\d)/gi, "$1 ");
-    t = t.replace(/((?:AS|TNS)(?:-[A-Z0-9]+)+-\d{4}-\d{3})(?=[A-Za-z])/gi, "$1 ");
-    t = t.replace(/([A-Za-z0-9\/])((?:AS|TNS)(?:-[A-Z0-9]+)+-\d{4}-\d{3})(?![0-9])/gi, "$1 $2");
+    t = t.replace(new RegExp("(" + REMOVAL_CASE_TOKEN_SRC + ")(?=[A-Za-z0-9])", "gi"), "$1 ");
+    t = t.replace(new RegExp("([A-Za-z0-9\/])(" + REMOVAL_CASE_TOKEN_SRC + ")(?![0-9])", "gi"), "$1 $2");
+    t = t.replace(/([A-Z]{3,})(Unidentified|[A-Z][a-z]{2,}\s+(?:spp\.|[x\u00d7X]\s+[a-z]{3,}|[a-z]{3,}(?:\s+(?:var\.|subsp\.)\s+[a-z]+)?))/g, "$1 $2");
     t = t.replace(/(\d)(N\/A)/gi, "$1 $2");
     t = t.replace(/(N\/A)(?=N\/A)/gi, "$1 ");
     t = t.replace(/\b(N\/A)(?=[A-Z0-9])/gi, "$1 ");
@@ -909,7 +921,12 @@ const CHINESE_TO_SCI = {
     "木蠟樹（野漆樹）": "Rhus succedanea",
     "木蠟樹": "Rhus succedanea",
     "野漆樹": "Rhus succedanea",
-    "木麻黃": "Casuarina equisetifolia"
+    "木麻黃": "Casuarina equisetifolia",
+    "大葉相思(馬占相思)": "Acacia mangium",
+    "大葉相思（馬占相思）": "Acacia mangium",
+    "大葉相思": "Acacia mangium",
+    "馬占相思": "Acacia mangium",
+    "雞蛋花": "Plumeria rubra"
 };
 
 // Unidentified, Genus spp., Genus [x×] species, and var./subsp. forms.
@@ -991,9 +1008,8 @@ function extractRemovalExtras(slice, fullText) {
     let actual = useTokens[2] ? normTok(useTokens[2]) : "";
 
     let remarks = "";
-    const rem = slice.match(/\b(TNS-[A-Z0-9]+(?:-[A-Z0-9]+)*-\d{4}-\d{3})\b/i)
-        || fullText.match(/\b(TNS-[A-Z0-9]+(?:-[A-Z0-9]+)*-\d{4}-\d{3})\b/i)
-        || slice.match(/\b([A-Z]{2,4}-[A-Z0-9]+(?:-[A-Z0-9]+)*-\d{4}-\d{3})\b/i);
+    const remRe = new RegExp("\\b(" + REMOVAL_CASE_TOKEN_SRC + ")\\b", "i");
+    const rem = slice.match(remRe) || fullText.match(remRe);
     if (rem) remarks = rem[1].toUpperCase();
 
     return {

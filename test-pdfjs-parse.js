@@ -705,4 +705,109 @@ check("easeful-keep-finding", path.join(samplesRem, "AS_EasefulCourt_dead_tree-p
 })();
 
 
+
+// Fu Tai Non-TPC Tree Removal Summary (TY-FTA-2026-001):
+// Scientific names sit in a trailing "FU TAI ESTATE Acacia mangium" list in pdf.js;
+// remarks are TY-FTA-... (not TNS-). After normalizePdfText, "001 35" must not
+// become S/N 135 and "001Signature" must not drop Remarks.
+(() => {
+  const reason = 'Dead tree (except for dead trees of particular interest)';
+  const steep = 'Steep slope (over 35 degrees)';
+  const remarks = 'TY-FTA-2026-001';
+  const estate = 'Fu Tai Estate';
+  const base = [
+    { sn: '34', tree: 'FTA-T0410', sci: 'Acacia mangium', zh: '大葉相思(馬占相思)',
+      h: '10', dbh: '260', crown: '5', girth: '816',
+      amenity: 'Low', form: 'Poor', health: 'Poor', structural: 'Poor',
+      reason, planting: 'No', noReplace: steep,
+      antRemoval: '27/11/2026', antComp: 'N/A', actual: 'N/A', remarks },
+    { sn: '35', tree: 'FTA-T0536', sci: 'Plumeria rubra', zh: '雞蛋花',
+      h: '5', dbh: '110', crown: '2', girth: '345',
+      amenity: 'Low', form: 'Poor', health: 'Poor', structural: 'Poor',
+      reason, planting: 'Yes', noReplace: '',
+      antRemoval: '27/11/2026', antComp: '27/4/2027', actual: 'N/A', remarks }
+  ];
+
+  function checkFtaRows(lab, file, opts) {
+    opts = opts || {};
+    let text = fs.readFileSync(file, 'utf8');
+    if (opts.normalize) text = normalizePdfText(text);
+    const rows = parseReport(text, 'Non-TPC_Tree removal summary_20261027.pdf');
+    assert(rows.length === 2, `${lab}: expected 2 rows, got ${rows.length}`);
+    assert(rows.every(r => r.kind === 'removal'), `${lab}: kind`);
+    assert(rows.every(r => r.cells.length === 20), `${lab}: 20 cols`);
+    const c = rows.map(r => r.cells);
+    console.log(lab, c.map(r => ({ sn: r[0], tree: r[2], sci: r[3], zh: r[4], plant: r[14], remarks: r[19] })));
+    assert(c.every(r => r[1] === estate), `${lab}: estate ${c[0] && c[0][1]}`);
+    for (let i = 0; i < 2; i++) {
+      const exp = base[i];
+      const skipExtras = opts.skipExtras && opts.skipExtras.includes(exp.tree);
+      assert(c[i][0] === exp.sn, `${lab}: row ${i} sn expected ${exp.sn} got ${c[i][0]}`);
+      assert(c[i][2] === exp.tree, `${lab}: row ${i} tree`);
+      assert(c[i][3] === exp.sci, `${lab}: row ${i} sci expected ${exp.sci} got ${c[i][3]}`);
+      assert(c[i][4] === exp.zh, `${lab}: row ${i} zh expected ${exp.zh} got ${c[i][4]}`);
+      assert(c[i][5] === exp.h && c[i][6] === exp.dbh && c[i][7] === exp.crown && c[i][8] === exp.girth,
+        `${lab}: row ${i} measurements`);
+      assert(c[i][9] === exp.amenity && c[i][10] === exp.form && c[i][11] === exp.health && c[i][12] === exp.structural,
+        `${lab}: row ${i} conditions`);
+      assert(c[i][13] === exp.reason, `${lab}: row ${i} reason`);
+      if (!skipExtras) {
+        assert(c[i][14] === exp.planting, `${lab}: row ${i} planting expected ${exp.planting} got ${c[i][14]}`);
+        assert(c[i][15] === exp.noReplace, `${lab}: row ${i} noReplace expected ${JSON.stringify(exp.noReplace)} got ${JSON.stringify(c[i][15])}`);
+        assert(c[i][16] === exp.antRemoval, `${lab}: row ${i} antRemoval`);
+        assert(c[i][17] === exp.antComp, `${lab}: row ${i} antComp expected ${exp.antComp} got ${c[i][17]}`);
+        assert(c[i][18] === exp.actual, `${lab}: row ${i} actual expected ${exp.actual} got ${c[i][18]}`);
+      }
+      assert(c[i][19] === exp.remarks, `${lab}: row ${i} remarks expected ${exp.remarks} got ${c[i][19]}`);
+    }
+    assert(c[1][0] !== '135', `${lab}: must not glue remark 001 + S/N 35 into 135`);
+    console.log(lab, 'PASS');
+  }
+
+  assert(CHINESE_TO_SCI['雞蛋花'] === 'Plumeria rubra', 'map 雞蛋花');
+  assert(CHINESE_TO_SCI['大葉相思(馬占相思)'] === 'Acacia mangium', 'map 大葉相思(馬占相思)');
+  assert(CHINESE_TO_SCI['大葉合歡'] === 'Albizia lebbeck', 'map 大葉合歡 stays distinct');
+
+  const stem = path.join(samplesRem, 'Non-TPC_Tree_removal_summary_FTA_20261027');
+  checkFtaRows('fta-20261027-pdfjs', stem + '-pdfjs.txt');
+  checkFtaRows('fta-20261027-pdfjs-live', stem + '-pdfjs.txt', { normalize: true });
+  checkFtaRows('fta-20261027-layout', stem + '-layout.txt');
+  checkFtaRows('fta-20261027-pdftotext', stem + '-pdftotext.txt', {
+    skipExtras: ['FTA-T0536']
+  });
+
+  // Live path (normalizePdfText) must still keep SCO pairing and TY- remarks
+  // on earlier forms (TY-FTA-2026-002 / TY-SPWA-2026-001 used to go blank).
+  const scoLive = parseReport(
+    normalizePdfText(fs.readFileSync(path.join(samplesRem, 'Non-TPC_Tree_removal_summary_SCO-pdfjs.txt'), 'utf8')),
+    'Non-TPC_Tree_removal_summary_SCO.pdf'
+  );
+  assert(scoLive.length === 5, 'sco live n ' + scoLive.length);
+  const scoSci = scoLive.map(r => r.cells[3] + '/' + r.cells[4]);
+  assert(scoSci.join('|') === [
+    'Unidentified/未能鑑別',
+    'Michelia x alba/白蘭',
+    'Rhus succedanea/木蠟樹(野漆樹)',
+    'Pinus elliottii/濕地松(愛氏松)',
+    'Casuarina equisetifolia/木麻黃'
+  ].join('|'), 'sco live sci/zh: ' + scoSci.join('|'));
+  assert(scoLive.every(r => r.cells[19] === 'TNS-SCO-2026-002'), 'sco live remarks');
+
+  const ftaOld = parseReport(
+    normalizePdfText(fs.readFileSync(path.join(samplesRem, 'tpc-20261028-pdfjs.txt'), 'utf8')),
+    'TPC_Tree_removal_summary_20261028.pdf'
+  );
+  assert(ftaOld.length === 1 && ftaOld[0].cells[3] === 'Albizia lebbeck', 'fta0515 live sci');
+  assert(ftaOld[0].cells[19] === 'TY-FTA-2026-002', 'fta0515 live remarks: ' + ftaOld[0].cells[19]);
+
+  const spwa = parseReport(
+    normalizePdfText(fs.readFileSync(path.join(samplesRem, 'tpc-20261103-pdfjs.txt'), 'utf8')),
+    'TPC_Tree_removal_summary_20261103.pdf'
+  );
+  assert(spwa.length === 1 && spwa[0].cells[3] === 'Macaranga tanarius var. tomentosa', 'spwa live sci');
+  assert(spwa[0].cells[19] === 'TY-SPWA-2026-001', 'spwa live remarks: ' + spwa[0].cells[19]);
+  console.log('removal-live-normalize remarks/sci PASS');
+})();
+
+
 console.log('ALL PDFJS TESTS PASSED');
