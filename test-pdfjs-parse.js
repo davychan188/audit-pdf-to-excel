@@ -238,6 +238,7 @@ assert(/BE-T0307_Hanger/.test(n3.replace(/\s+/g, '')) || /BE-T0307\s*_Hanger/.te
 
 // Tree-ID prefix → estate fallback (when text estate missing)
 (() => {
+  assert(estateFromTreeId('TWH-G001') === 'Tai Wo Hau Estate', 'prefix TWH');
   assert(estateFromTreeId('SCO-A0005') === 'Shui Chuen O Estate', 'prefix SCO');
   assert(estateFromTreeId('HKFU-T0005') === 'Kam Fung Court', 'prefix HKFU');
   assert(estateFromTreeId('TY-T0315') === 'Tai Yuen Estate', 'prefix TY');
@@ -1153,6 +1154,121 @@ check("easeful-keep-finding", path.join(samplesRem, "AS_EasefulCourt_dead_tree-p
     assert(c.map(r => r[5]).join("|") === expObs.join("|"), lab + ": obs " + c.map(r => r[5]).join("|"));
     console.log(lab, "PASS", got);
   }
+})();
+
+
+
+// Estate longest-match: "Tai Wo" must not swallow "Tai Wo Hau Estate".
+(() => {
+  assert(normalizePlace("Tai Wo Hau Estate") === "Tai Wo Hau Estate", "Hau full: " + normalizePlace("Tai Wo Hau Estate"));
+  assert(normalizePlace("Tai Wo Hau Estate") !== "Tai Wo Estate", "Hau is not Tai Wo Estate");
+  assert(normalizePlace("Tai Wo Hau Estate / Kwai Chung") === "Tai Wo Hau Estate", "Hau with district");
+  assert(normalizePlace("Tai Wo Hau") === "Tai Wo Hau Estate", "bare Hau");
+  assert(normalizePlace("Tai Wo Estate") === "Tai Wo Estate", "Tai Wo Estate stays");
+  assert(normalizePlace("Tai Wo") === "Tai Wo Estate", "bare Tai Wo stays Tai Wo Estate");
+  assert(normalizePlace("Tin Yiu (2) Estate") === "Tin Yiu (2) Estate", "Tin Yiu (2) not swallowed");
+  console.log("normalizePlace-longest-match PASS");
+})();
+
+
+// AS Audit Tai Wo Hau (TWH-2026-007): 9 Findings, including a bare NT1_
+// continuation on TWH-G001, estate Tai Wo Hau (not Tai Wo).
+(() => {
+  const expTrees = [
+    "TWH-T0250", "TWH-T0347", "TWH-T0424", "TWH-T0067",
+    "TWH-T0112", "TWH-T0119", "TWH-T0127", "TWH-G001", "TWH-G001"
+  ];
+  const expObs = [
+    "Dead branch",
+    "Poor health",
+    "Sparse foliage",
+    "Dead branch",
+    "No foliage",
+    "Dead branch",
+    "Dead branch",
+    "NT1 Main trunk broken",
+    "NT1 No living foliage"
+  ];
+  const twhDumps = [
+    ["twh-pdftotext", "AS_Audit_TaiWoHau_TWH-2026-007-pdftotext.txt"],
+    ["twh-layout", "AS_Audit_TaiWoHau_TWH-2026-007-layout.txt"],
+    ["twh-pdfjs", "AS_Audit_TaiWoHau_TWH-2026-007-pdfjs.txt"],
+    ["twh-pdfjs-live", "AS_Audit_TaiWoHau_TWH-2026-007-pdfjs.txt", true],
+    ["twh-pdftotext-live", "AS_Audit_TaiWoHau_TWH-2026-007-pdftotext.txt", true],
+    ["twh-layout-live", "AS_Audit_TaiWoHau_TWH-2026-007-layout.txt", true]
+  ];
+  function assertTwhRows(lab, rows) {
+    const c = rows.map(r => r.cells || r);
+    const got = c.map(r => r[4] + "=" + r[5]).join(" | ");
+    assert(rows.length === 9, lab + ": expected 9 rows, got " + rows.length + ": " + got);
+    assert(rows.every(r => r.kind === "audit"), lab + ": kind audit");
+    assert(c.every(r => r[0] === "AS"), lab + ": source AS");
+    assert(c.every(r => r[1] === "Tai Wo Hau Estate"), lab + ": estate " + (c[0] && c[0][1]));
+    assert(c.every(r => r[1] !== "Tai Wo Estate"), lab + ": not Tai Wo Estate");
+    assert(c.every(r => r[2] === "AS-TWH-2026-007"), lab + ": case " + (c[0] && c[0][2]));
+    assert(c.every(r => r[3] === "11/08/2026"), lab + ": date " + (c[0] && c[0][3]));
+    assert(c.every(r => isValidTreeId(r[4])), lab + ": every row has a valid Tree ID");
+    assert(c.map(r => r[4]).join(",") === expTrees.join(","), lab + ": trees " + c.map(r => r[4]));
+    assert(c.map(r => r[5]).join("|") === expObs.join("|"), lab + ": obs " + c.map(r => r[5]).join("|"));
+    const g001 = c.filter(r => r[4] === "TWH-G001").map(r => r[5]);
+    assert(g001.length === 2, lab + ": two G001 rows, got " + g001.length);
+    assert(g001[0] === "NT1 Main trunk broken" && g001[1] === "NT1 No living foliage", lab + ": G001 obs separate: " + g001.join(" | "));
+    assert(!c.some(r => /NT1 Main trunk broken NT1/i.test(String(r[5] || ""))), lab + ": G001 observations must not be merged");
+    return got;
+  }
+  for (const [lab, file, doNorm] of twhDumps) {
+    let text = fs.readFileSync(path.join(samplesRem, file), "utf8");
+    if (doNorm) text = normalizePdfText(text);
+    const rows = parseReport(text, "AS_Audit_TaiWoHau_TWH-2026-007.pdf");
+    const got = assertTwhRows(lab, rows);
+    console.log(lab, "PASS", got);
+  }
+
+  // Caption coverage: drop the Findings-block bare NT1 token; the 9th row
+  // must still be recovered from "Photos – NT1_No living foliage".
+  const full = fs.readFileSync(path.join(samplesRem, "AS_Audit_TaiWoHau_TWH-2026-007-pdftotext.txt"), "utf8");
+  const photosAt = full.search(/\bPhotos\b/i);
+  assert(photosAt > 0, "twh dump has Photos");
+  const missingFindingsBare = full.slice(0, photosAt).replace(/\bNT1_No living foliage\s*/i, "") + full.slice(photosAt);
+  assert(/Findings:[\s\S]*TWH-G001-NT1_Main trunk broken/i.test(missingFindingsBare), "findings still has G001-NT1");
+  assert(!/Findings:[\s\S]*NT1_No living foliage[\s\S]*Photos/i.test(missingFindingsBare), "findings bare NT1 removed");
+  assert(/Photos\s*[–-]\s*NT1_No living foliage/i.test(missingFindingsBare), "caption bare NT1 kept");
+  const fromCaption = parseReport(missingFindingsBare, "AS_Audit_TaiWoHau_TWH-2026-007.pdf");
+  assertTwhRows("twh-caption-recovers-9th", fromCaption);
+  console.log("twh-caption-recovers-9th PASS");
+
+  // Both Findings and captions present (the live dump) already asserted 9
+  // unique rows above — also a captions-only reconstruction of all 9.
+  const captionsOnly = full.replace(/Findings\s*:?\s*[\s\S]*?(?=\bPhotos\b)/i, "Findings:\n");
+  assert(/Findings:\s*Photos/i.test(captionsOnly.replace(/\s+/g, " ")) || /Findings:\s*$/m.test(captionsOnly), "findings emptied");
+  assert(/Photos\s*[–-]\s*TWH-T0250_Dead branch/i.test(captionsOnly), "captions kept");
+  const fromPhotos = parseReport(captionsOnly, "AS_Audit_TaiWoHau_TWH-2026-007.pdf");
+  assertTwhRows("twh-captions-only", fromPhotos);
+  console.log("twh-captions-only PASS");
+
+  // Caption label variants, including Photos#N / Photo #N / en-dash / no space.
+  const variantSrc = [
+    "Audit Report on Routine Maintenance / Completion Report",
+    "Date: 2026/08/11",
+    "Estate/District: Tai Wo Hau Estate / Kwai Chung",
+    "Referral Case No. AS-TWH-2026-007",
+    "Location: Tai Wo Hau Estate",
+    "Findings:",
+    "Photos – TWH-T0250_Dead branch",
+    "Photos - TWH-T0347_Poor health",
+    "Photos–TWH-T0424_Sparse foliage",
+    "Photos-TWH-T0067_Dead branch",
+    "Photos#1 TWH-T0112_No foliage",
+    "Photos #1 TWH-T0119_Dead branch",
+    "Photo #1 TWH-T0127_Dead branch",
+    "Photos – #1 TWH-G001-NT1_Main trunk broken",
+    "Photos – NT1_No living foliage",
+    "Photos – General View",
+    "Audited by: Kay Hai"
+  ].join("\n");
+  const variantRows = parseReport(variantSrc, "AS_Audit_TaiWoHau_TWH-2026-007.pdf");
+  assertTwhRows("twh-caption-label-variants", variantRows);
+  console.log("twh-caption-label-variants PASS");
 })();
 
 

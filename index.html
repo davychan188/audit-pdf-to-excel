@@ -256,7 +256,7 @@ const KNOWN_PLACES = [
     "Yung Shing Court", "Queens Hill Estate", "Chun Shek Estate", "Chun Yeung Estate", "Hin Yiu Estate",
     "Pok Hong Estate", "Sha Kok Estate", "Sui Wo Court", "Sun Tin Wai Estate", "Wo Che Estate",
     "Fu Heng Estate", "Fu Shin Estate", "Fu Tip Estate", "Kwong Fuk Estate", "Po Heung Estate",
-    "Tai Wo Estate", "Wan Tau Tong Estate",
+    "Tai Wo Hau Estate", "Tai Wo Estate", "Wan Tau Tong Estate",
     "Kwai Chung 1", "Kwai Chung 2", "Shatin Pass",
     "Kam Fung", "Mei Lam", "Mei Tin", "Sun Chui", "Yan Tin", "Yan On", "Tin Yiu", "Tin Shui", "Hoi Tai Factory", "Butterfly", "Kin Sang", "Shek Mun", "Shek Yam",
     "Chung On", "Fung Wo", "Lee On", "Lung Hang", "Lek Yuen", "Ching Ho", "Yau Oi", "Tai Yuen", "Tai Hing", "On Ting", "On Yam", "Fu Tai", "Shui Pin Wai",
@@ -264,7 +264,7 @@ const KNOWN_PLACES = [
     "Hung Fuk", "Long Ching", "Long Shin", "Tin Chak", "Tin Ching", "Tin Heng", "Tin Tsz", "Tin Wah", "Tin Yan", "Tin Yat", "Tin Yuet",
     "San Wai", "Cheung Lung Wai", "Cheung Wah", "Choi Po", "Choi Yuen", "Fai Ming", "Ka Fuk", "Po Shek Wu", "Tin Ping", "Wah Sum",
     "Yung Shing", "Queens Hill", "Chun Shek", "Chun Yeung", "Hin Yiu", "Pok Hong", "Sha Kok", "Sui Wo", "Sun Tin Wai", "Wo Che",
-    "Fu Heng", "Fu Shin", "Fu Tip", "Kwong Fuk", "Po Heung", "Tai Wo", "Wan Tau Tong"
+    "Fu Heng", "Fu Shin", "Fu Tip", "Kwong Fuk", "Po Heung", "Tai Wo Hau", "Tai Wo", "Wan Tau Tong"
 ];
 
 const FILENAME_PLACE = [
@@ -374,6 +374,7 @@ const TREE_PREFIX_ESTATE = {
     "FTP": "Fu Tip Estate",
     "KFK": "Kwong Fuk Estate",
     "POH": "Po Heung Estate",
+    "TWH": "Tai Wo Hau Estate",
     "TWO": "Tai Wo Estate",
     "TY": "Tai Yuen Estate",
     "WTT": "Wan Tau Tong Estate"
@@ -419,26 +420,57 @@ function escapeRegExp(s) {
     return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function knownPlaceBody(name) {
+    return escapeRegExp(name).replace(/ /g, "\\s+") + "(?:\\s+(Estate|Court))?";
+}
+
+/** Format a known-place hit the same way normalizePlace used to. */
+function formatKnownPlace(name, matchedText) {
+    if (/court/i.test(name) || /court/i.test(matchedText)) {
+        return name.replace(/\s+(Estate|Court)$/i, "") + (/court/i.test(name) ? " Court" : ( /court/i.test(matchedText) ? " Court" : " Estate"));
+    }
+    if (/estate/i.test(name) || /estate/i.test(matchedText)) {
+        return name.replace(/\s+(Estate|Court)$/i, "") + " Estate";
+    }
+    if (/^Kam Fung$/i.test(name)) return "Kam Fung Court";
+    return name + " Estate";
+}
+
+/** Longest known-place match at the start of s, so "Tai Wo" cannot beat "Tai Wo Hau Estate". */
+function bestKnownPlaceAtStart(s) {
+    let best = null;
+    let bestLen = 0;
+    for (const name of KNOWN_PLACES) {
+        const m = String(s || "").match(new RegExp("^" + knownPlaceBody(name), "i"));
+        if (m && m[0].length > bestLen) {
+            bestLen = m[0].length;
+            best = { name, matched: m[0] };
+        }
+    }
+    return best;
+}
+
+/** Longest known-place match anywhere in s. */
+function bestKnownPlaceInText(s) {
+    let best = null;
+    let bestLen = 0;
+    for (const name of KNOWN_PLACES) {
+        const m = String(s || "").match(new RegExp("(?:^|[^A-Za-z])(" + knownPlaceBody(name) + ")(?![A-Za-z])", "i"));
+        if (m && m[1].length > bestLen) {
+            bestLen = m[1].length;
+            best = { name, matched: m[1] };
+        }
+    }
+    return best;
+}
+
 function normalizePlace(raw) {
     if (!raw) return "";
     let s = raw.replace(/\s+/g, " ").trim();
     s = s.replace(/[\/|,].*$/, "").trim();
     s = s.replace(/\b(Sha Tin|Tuen Mun|Yuen Long|Kwai Tsing|Islands|District)\b.*$/i, "").trim();
-    for (const name of KNOWN_PLACES) {
-        const re = new RegExp("^" + escapeRegExp(name).replace(/ /g, "\\s+") + "(?:\\s+(Estate|Court))?", "i");
-        const m = s.match(re);
-        if (m) {
-            if (/court/i.test(name) || /court/i.test(m[0])) {
-                return name.replace(/\s+(Estate|Court)$/i, "") + (/court/i.test(name) ? " Court" : ( /court/i.test(m[0]) ? " Court" : " Estate"));
-            }
-            if (/estate/i.test(name) || /estate/i.test(m[0])) {
-                return name.replace(/\s+(Estate|Court)$/i, "") + " Estate";
-            }
-            // bare name like "Kam Fung" — prefer Court if known as court
-            if (/^Kam Fung$/i.test(name)) return "Kam Fung Court";
-            return name + " Estate";
-        }
-    }
+    const best = bestKnownPlaceAtStart(s);
+    if (best) return formatKnownPlace(best.name, best.matched);
     // Keep parentheses e.g. Tin Yiu (2) Estate
     const ec = s.match(/^([A-Za-z]+(?:\s+[A-Za-z]+)*(?:\s*\(\d+\)|\s+\d+)?)\s+(Estate|Court)\b/i);
     if (ec) {
@@ -572,13 +604,8 @@ function extractEstate(text, filename) {
     // Collapse accidental spaces inside words from pdf.js (e.g. "K in Sang")
     if (estate) estate = estate.replace(/\b([A-Za-z])\s+(?=[a-z])/g, "$1");
     if (!estate || estate.length < 3) {
-        for (const name of KNOWN_PLACES) {
-            const re = new RegExp("\\b" + escapeRegExp(name).replace(/ /g, "\\s+") + "(?:\\s+(Estate|Court))?\\b", "i");
-            if (re.test(text)) {
-                estate = normalizePlace(name);
-                break;
-            }
-        }
+        const hit = bestKnownPlaceInText(text);
+        if (hit) estate = formatKnownPlace(hit.name, hit.matched);
     }
     if (!estate) {
         for (const [re, place] of FILENAME_PLACE) {
@@ -637,74 +664,147 @@ function normalizeObservation(treeId, obs) {
 }
 
 function pushFinding(findings, treeId, obs) {
-    if (!isValidTreeId(treeId)) return;
+    if (!isValidTreeId(treeId)) return false;
     const cleaned = normalizeObservation(treeId, obs);
-    if (cleaned.length < 1) return;
-    if (/^photo/i.test(cleaned) || /^agreement/i.test(cleaned)) return;
-    if (/#\d/.test(cleaned)) return;
-    if (/^(Information|Location|Findings|Referral|Estate|District|Photos|Audited|Signature|Contract|Tree|Case|From|To|Email|Inspection|Officer|Submitted)\b/i.test(cleaned)) return;
+    if (cleaned.length < 1) return false;
+    if (/^photo/i.test(cleaned) || /^agreement/i.test(cleaned)) return false;
+    if (/#\d/.test(cleaned)) return false;
+    if (/^(Information|Location|Findings|Referral|Estate|District|Photos|Audited|Signature|Contract|Tree|Case|From|To|Email|Inspection|Officer|Submitted)\b/i.test(cleaned)) return false;
     findings.push({ treeId, obs: cleaned });
+    return true;
 }
 
-function extractFindingsFromChunk(chunk, findings) {
-    // Standard PREFIX-X####_obs / PREFIX-LL#_obs ; optional #N; spaces around _ allowed
-    // Also accept underscore IDs if normalizePdfText did not rewrite them yet
-    const idTok = "[A-Z]{1,6}\\d{0,2}\\s*[-_]\\s*(?:LL\\s*\\d{1,2}|[A-Z]\\s*\\d{3,5})";
-    const treeRe = new RegExp("#?\\d*\\s*(" + idTok + ")\\s*[_:=\\-\\s]+\\s*(&?\\s*[A-Za-z0-9][A-Za-z0-9\\s\\/_\\-\\.&%()]{0,100}?)(?=\\s*(?:#\\s*\\d+|#?\\d*\\s*" + idTok + "|Photos\\b|Audited\\b|Agreement\\s+No\\.|Provision\\s+of\\s+arboricultural|Referral\\b|Location\\b|Case\\b|Date\\s*:|From\\s*:|Inspection\\s+Officer|Tree\\s+Information|Estate\\/|Estate\\b|$))", "gi");
+// AS Audit Findings tokens: PREFIX-T0250_obs, PREFIX-G001-NT1_obs, PREFIX-G002-2B_NT1_obs.
+// Do not use PREFIX-digits (that would invent IDs from case numbers).
+const AUDIT_TREE_ID_SRC = "[A-Z]{1,6}\\d{0,2}\\s*[-_]\\s*(?:LL\\s*\\d{1,2}|[A-Z]\\s*\\d{3,5})";
+// Bare continuation after a group tree, e.g. NT1_No living foliage or 2B_NT2_Dead tree.
+const AUDIT_BARE_CONT_SRC = "(?:\\d+[A-Z]\\s*[_-]?\\s*)?NT\\s*\\d+\\s*_";
+
+function isBareContinuationAt(chunk, index) {
+    if (index < 0 || index >= String(chunk || "").length) return false;
+    if (index > 0 && /[-_]/.test(chunk[index - 1])) return false;
+    return new RegExp("^" + AUDIT_BARE_CONT_SRC, "i").test(chunk.slice(index));
+}
+
+function findAuditFindingTokenStarts(chunk) {
+    const src = String(chunk || "");
+    const starts = [];
+    const treeRe = new RegExp("(?:#\\s*\\d+\\s*)?(?:" + AUDIT_TREE_ID_SRC + ")", "gi");
     let m;
-    while ((m = treeRe.exec(chunk)) !== null) {
-        pushFinding(findings, normalizeTreeId(m[1].replace(/_/g, "-")), m[2]);
+    while ((m = treeRe.exec(src)) !== null) starts.push(m.index);
+    const unRe = /#\s*\d+\s+UN\d{1,3}\b/gi;
+    while ((m = unRe.exec(src)) !== null) starts.push(m.index);
+    const bareRe = new RegExp(AUDIT_BARE_CONT_SRC, "gi");
+    while ((m = bareRe.exec(src)) !== null) {
+        if (isBareContinuationAt(src, m.index)) starts.push(m.index);
     }
-    // Odd: #8 UN1 Dead tree
-    const oddRe = /#\s*\d+\s+(UN\d{1,3})\s+([A-Za-z][A-Za-z0-9\s\/\-]{1,60}?)(?=\s*(?:#\s*\d+|Photos\b|Audited\b|Agreement\s+No\.|$))/gi;
-    while ((m = oddRe.exec(chunk)) !== null) {
-        pushFinding(findings, normalizeTreeId(m[1]), m[2]);
+    starts.sort((a, b) => a - b);
+    const out = [];
+    for (const s of starts) {
+        if (!out.length || s !== out[out.length - 1]) out.push(s);
     }
-    // Split-based: PREFIX-X####_obs / PREFIX-LL#_obs (require _ or similar before observation words)
-    const idRe = /([A-Z]{1,6}\d{0,2}[-_](?:LL\d{1,2}|[A-Z]\d{3,5}))(?=\s*[_:\-])/g;
-    const ids = [];
-    let im;
-    while ((im = idRe.exec(chunk)) !== null) ids.push({ id: im[1], index: im.index, end: im.index + im[0].length });
-    for (let i = 0; i < ids.length; i++) {
-        const start = ids[i].end;
-        const stop = i + 1 < ids.length ? ids[i + 1].index : Math.min(chunk.length, start + 120);
-        let raw = chunk.slice(start, stop);
-        if (!/^\s*[_:\-\s]/.test(raw)) continue;
-        raw = raw.replace(/^\s*[_:\-=\s]+\s*/, "");
-        if (/^[A-Za-z0-9&%]/.test(raw.trim())) pushFinding(findings, normalizeTreeId(ids[i].id.replace(/_/g, "-")), raw);
+    return out;
+}
+
+function parseAndPushFindingToken(raw, findings, state) {
+    let s = String(raw || "").trim();
+    if (!s) return;
+    const un = s.match(/^#\s*\d+\s+(UN\d{1,3})\s+([\s\S]+)/i);
+    if (un) {
+        if (pushFinding(findings, normalizeTreeId(un[1]), un[2])) state.lastTreeId = normalizeTreeId(un[1]);
+        return;
     }
+    const hash = s.match(/^#\s*\d+\s*/);
+    if (hash) s = s.slice(hash[0].length).trim();
+    const idm = s.match(new RegExp("^(" + AUDIT_TREE_ID_SRC + ")", "i"));
+    if (idm) {
+        const treeId = normalizeTreeId(idm[1].replace(/_/g, "-"));
+        // Keep suffix tags (NT1, 2B) but drop the hyphen/underscore that joins them to the ID.
+        const obsRaw = s.slice(idm[0].length).replace(/^\s*[_:\-=]+/, "");
+        if (pushFinding(findings, treeId, obsRaw)) state.lastTreeId = treeId;
+        else if (isValidTreeId(treeId)) state.lastTreeId = treeId;
+        return;
+    }
+    if (state.lastTreeId && isBareContinuationAt(s, 0)) {
+        pushFinding(findings, state.lastTreeId, s);
+    }
+}
+
+function extractFindingsFromChunk(chunk, findings, state) {
+    state = state || {};
+    if (!state.lastTreeId) state.lastTreeId = "";
+    const src = String(chunk || "");
+    const starts = findAuditFindingTokenStarts(src);
+    for (let i = 0; i < starts.length; i++) {
+        const raw = src.slice(starts[i], i + 1 < starts.length ? starts[i + 1] : src.length);
+        parseAndPushFindingToken(raw, findings, state);
+    }
+}
+
+/** Photo captions on every page: "Photos – ID_obs", "Photos#1 …", "Photo #1", "Photos – #1 …". Skip General View. */
+function extractPhotoCaptionChunks(text) {
+    const chunks = [];
+    const src = String(text || "");
+    const labelRe = /\bPhotos?\b/gi;
+    let m;
+    while ((m = labelRe.exec(src)) !== null) {
+        let rest = src.slice(m.index + m[0].length);
+        rest = rest.replace(/^\s*(?:#\s*\d+\s*)?[–—:-]?\s*(?:#\s*\d+\s*)?/, "");
+        const stop = rest.search(/(?=\bPhotos?\b|\bAudited\b|\bAgreement\s+No\.|\bProvision\s+of\s+arboricultural|\bAS\s+Contractor|\bContract\s+No\.|\bSignature\s*:)/i);
+        const chunk = (stop >= 0 ? rest.slice(0, stop) : rest).replace(/\s+/g, " ").trim();
+        if (!chunk) continue;
+        if (/^general(?:\s+view)?\b/i.test(chunk) && !new RegExp(AUDIT_TREE_ID_SRC + "|" + AUDIT_BARE_CONT_SRC, "i").test(chunk)) continue;
+        chunks.push({ index: m.index, chunk: chunk });
+    }
+    return chunks;
+}
+
+function uniqueValidFindings(findings) {
+    const seen = new Set();
+    const unique = [];
+    for (const f of findings) {
+        if (!isValidTreeId(f.treeId)) continue;
+        const key = f.treeId + "\0" + f.obs;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        unique.push(f);
+    }
+    return unique;
 }
 
 function extractFindings(text) {
     const findings = [];
-    // Primary Findings: … block (may end at Agreement page header)
-    const fm = text.match(/Findings\s*:?\s*([\s\S]*?)(?=\s*Photos\b|\s*Audited\b|\s*Agreement\s+No\.|\s*Provision\s+of\s+arboricultural|$)/i);
-    if (fm) extractFindingsFromChunk(fm[1], findings);
-
-    // Also scan FULL text for #N lines (continued after page breaks)
-    // #N finding lines across page breaks (not Photos# captions alone)
-    const hashChunks = text.match(/#\s*\d+\s+(?:[A-Z]{1,6}\d{0,2}\s*[-_]\s*(?:LL\s*\d{1,2}|[A-Z]\s*\d{3,5})|UN\d{1,3})[\s\S]{0,120}?(?=\s*#\s*\d+|\s*Photos\b|\s*Audited\b|\s*Agreement\s+No\.|\s*Provision\s+of\s+arboricultural|$)/gi);
-    if (hashChunks) {
-        for (const ch of hashChunks) extractFindingsFromChunk(ch, findings);
+    const state = { lastTreeId: "" };
+    const parts = [];
+    // Primary Findings: … block (may end at Agreement page header / Photos)
+    const fm = text.match(/Findings\s*:?\s*([\s\S]*?)(?=\s*Photos?\b|\s*Audited\b|\s*Agreement\s+No\.|\s*Provision\s+of\s+arboricultural|$)/i);
+    if (fm) {
+        parts.push({ index: fm.index + fm[0].length - fm[1].length, chunk: fm[1] });
     }
-    // Only inspect Findings block — Photos#1 must not block prose findings
+
+    // #N lines across page breaks (shekmun-style). Stop at Photo(s) so a
+    // following "Photo #1" caption is not swallowed into the observation.
+    const hashRe = /#\s*\d+\s+(?:[A-Z]{1,6}\d{0,2}\s*[-_]\s*(?:LL\s*\d{1,2}|[A-Z]\s*\d{3,5})|UN\d{1,3})[\s\S]{0,120}?(?=\s*#\s*\d+|\s*Photos?\b|\s*Audited\b|\s*Agreement\s+No\.|\s*Provision\s+of\s+arboricultural|$)/gi;
+    let hm;
+    while ((hm = hashRe.exec(text)) !== null) {
+        parts.push({ index: hm.index, chunk: hm[0] });
+    }
+
+    // Second source: photo captions on every page, including bare NT# tokens
+    // that inherit the previous tree ID (Findings or a prior caption).
+    for (const cap of extractPhotoCaptionChunks(text)) parts.push(cap);
+
+    parts.sort((a, b) => a.index - b.index);
+    for (const part of parts) extractFindingsFromChunk(part.chunk, findings, state);
+
     const findingsProbe = fm ? fm[1] : "";
     const looksLikeTreeFindings = /#\s*\d/.test(findingsProbe)
         || /[A-Z]{1,6}\d{0,2}\s*[-_]\s*(?:LL\s*\d{1,2}|[A-Z]\s*\d{3,5})\s*[_\-]/.test(findingsProbe);
 
     if (findings.length > 0) {
         // Keep distinct observations for the same Tree ID (e.g. KSE-G002 NT1–NT4).
-        // Still collapse exact duplicates from the overlapping extractors.
-        const seen = new Set();
-        const unique = [];
-        for (const f of findings) {
-            if (!isValidTreeId(f.treeId)) continue;
-            const key = f.treeId + "\0" + f.obs;
-            if (seen.has(key)) continue;
-            seen.add(key);
-            unique.push(f);
-        }
-        return unique;
+        // Still collapse exact duplicates from Findings + photo captions.
+        return uniqueValidFindings(findings);
     }
 
     if (looksLikeTreeFindings) return [];
@@ -722,6 +822,8 @@ function extractFindings(text) {
     }
     return [];
 }
+
+
 
 const TREE_REMOVAL_REASONS = [
     'Tree classified as "Black" under the Triage System in the TRAM Guidelines',
@@ -874,10 +976,8 @@ function extractEstateNear(text, index) {
     const start = Math.max(0, index - 120);
     // Unglue digit+Place ("26Tai Yuen") so known-place match works
     const window = text.slice(start, index + 40).replace(/\s+/g, " ").replace(/(\d)([A-Z][a-z])/g, "$1 $2");
-    for (const name of KNOWN_PLACES) {
-        const re = new RegExp("(?:^|[^A-Za-z])" + escapeRegExp(name).replace(/ /g, "\\s+") + "(?:\\s+(Estate|Court))?(?![A-Za-z])", "i");
-        if (re.test(window)) return normalizePlace(name);
-    }
+    const hit = bestKnownPlaceInText(window);
+    if (hit) return formatKnownPlace(hit.name, hit.matched);
     const ec = window.match(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z.()0-9]*){0,3})\s+(Estate|Court)\b/);
     if (ec) {
         const cleaned = normalizePlace(ec[1] + " " + ec[2]);
@@ -1950,13 +2050,10 @@ function extractTmuEstateFromHeader(text) {
     for (const [re, name] of specific) {
         if (re.test(header)) return name;
     }
-    for (const name of KNOWN_PLACES) {
-        if (name.length < 6) continue;
-        const re = new RegExp("\\b" + escapeRegExp(name).replace(/ /g, "\\s+") + "(?:\\s+(Estate|Court))?\\b", "i");
-        if (re.test(header)) {
-            const est = normalizePlace(name);
-            if (!isWeakTmuEstate(est)) return est;
-        }
+    const tmuHit = bestKnownPlaceInText(header);
+    if (tmuHit && tmuHit.name.length >= 6) {
+        const est = formatKnownPlace(tmuHit.name, tmuHit.matched);
+        if (!isWeakTmuEstate(est)) return est;
     }
     return "";
 }
