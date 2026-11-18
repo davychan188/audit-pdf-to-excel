@@ -446,9 +446,11 @@ function normalizePlace(raw) {
     return s.split(/\s+/).slice(0, 5).join(" ");
 }
 
-// Remark / case tokens such as TNS-SCO-2026-002, TY-FTA-2026-001, TY-SPWA-2026-001.
-// Do not use for Tree Nos. (FTA-T0410, SPWA-0058) — those lack -YYYY-NNN.
-const REMOVAL_CASE_TOKEN_SRC = "(?:AS|TNS|TY)(?:-[A-Z0-9]+)+-\\d{4}-\\d{3}";
+// Remark / case tokens: letters and optional ampersands, then -CODE-YYYY-NNN.
+// Matches TNS-SCO-2026-002, TY-FTA-2026-001, T&Y-LKG-2026-002, ABC-DEF-2026-010.
+// Prefix must be at least two letters so AS-TNS-SM-2026-006 is not split after "A".
+// Do not use for Tree Nos. (FTA-T0410, LKG-T0175, SPWA-0058) — those lack -YYYY-NNN.
+const REMOVAL_CASE_TOKEN_SRC = "[A-Z](?:[A-Z&]*[A-Z])(?:-[A-Z0-9]+)+-\\d{4}-\\d{3}";
 
 function normalizePdfText(text) {
     let t = String(text || "");
@@ -471,7 +473,7 @@ function normalizePdfText(text) {
     // and "001Signature" does not swallow Remarks.
     t = t.replace(new RegExp("(" + REMOVAL_CASE_TOKEN_SRC + ")([0-9A-Za-z])", "gi"), "$1 $2");
     t = t.replace(/(\d)([A-Z]{1,6}\d{0,2}-(?:LL\d{1,2}|[A-Z]\d{3,5}))(?![0-9A-Za-z])/g, "$1 $2");
-    t = t.replace(new RegExp("([A-Za-z0-9\/])(" + REMOVAL_CASE_TOKEN_SRC + ")(?![0-9])", "gi"), "$1 $2");
+    t = t.replace(new RegExp("([0-9\/])(" + REMOVAL_CASE_TOKEN_SRC + ")(?![0-9])", "gi"), "$1 $2");
     // All-caps estate (FU TAI ESTATE) glues to a following binomial: FUTAIESTATEAcacia mangium
     t = t.replace(/([A-Z]{3,})(Unidentified|[A-Z][a-z]{2,}\s+(?:spp\.|[x\u00d7X]\s+[a-z]{3,}|[a-z]{3,}(?:\s+(?:var\.|subsp\.)\s+[a-z]+)?))/g, "$1 $2");
     t = t.replace(/(\d{4})(\d{1,2}\/\d{1,2}\/\d{4})/g, "$1 $2");
@@ -894,7 +896,7 @@ function normalizeRemovalPdfText(text) {
     t = t.replace(/([a-z\)）])(Yes|No)\b/gi, "$1 $2");
     t = t.replace(/\b(Yes|No)(?=\d)/gi, "$1 ");
     t = t.replace(new RegExp("(" + REMOVAL_CASE_TOKEN_SRC + ")(?=[A-Za-z0-9])", "gi"), "$1 ");
-    t = t.replace(new RegExp("([A-Za-z0-9\/])(" + REMOVAL_CASE_TOKEN_SRC + ")(?![0-9])", "gi"), "$1 $2");
+    t = t.replace(new RegExp("([0-9\/])(" + REMOVAL_CASE_TOKEN_SRC + ")(?![0-9])", "gi"), "$1 $2");
     t = t.replace(/([A-Z]{3,})(Unidentified|[A-Z][a-z]{2,}\s+(?:spp\.|[x\u00d7X]\s+[a-z]{3,}|[a-z]{3,}(?:\s+(?:var\.|subsp\.)\s+[a-z]+)?))/g, "$1 $2");
     t = t.replace(/(\d)(N\/A)/gi, "$1 $2");
     t = t.replace(/(N\/A)(?=N\/A)/gi, "$1 ");
@@ -926,7 +928,8 @@ const CHINESE_TO_SCI = {
     "大葉相思（馬占相思）": "Acacia mangium",
     "大葉相思": "Acacia mangium",
     "馬占相思": "Acacia mangium",
-    "雞蛋花": "Plumeria rubra"
+    "雞蛋花": "Plumeria rubra",
+    "洋紫荊": "Bauhinia x blakeana"
 };
 
 // Unidentified, Genus spp., Genus [x×] species, and var./subsp. forms.

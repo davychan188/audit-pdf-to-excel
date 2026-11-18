@@ -810,4 +810,75 @@ check("easeful-keep-finding", path.join(samplesRem, "AS_EasefulCourt_dead_tree-p
 })();
 
 
+
+// Leung King Non-TPC Tree Removal Summary (T&Y-LKG-2026-002):
+// Remarks prefix includes an ampersand and must not be limited to AS/TNS/TY.
+// Bauhinia x blakeana is a hybrid and must stay on the row.
+(() => {
+  const reason = 'Dead tree (except for dead trees of particular interest)';
+  const remarks = 'T&Y-LKG-2026-002';
+  const exp = {
+    sn: '42', estate: 'Leung King Estate', tree: 'LKG-T0175',
+    sci: 'Bauhinia x blakeana', zh: '洋紫荊',
+    h: '9', dbh: '185', crown: '3', girth: '581',
+    amenity: 'Low', form: 'Poor', health: 'Poor', structural: 'Poor',
+    reason, planting: 'Yes', noReplace: '',
+    antRemoval: '3/12/2026', antComp: '3/5/2027', actual: 'N/A', remarks
+  };
+
+  function checkLkg(lab, file, opts) {
+    opts = opts || {};
+    let text = fs.readFileSync(file, 'utf8');
+    if (opts.normalize) text = normalizePdfText(text);
+    const rows = parseReport(text, 'Non-TPC_Tree_removal_summary_LKG.pdf');
+    assert(rows.length === 1, `${lab}: expected 1 row, got ${rows.length}`);
+    assert(rows[0].kind === 'removal' && rows[0].cells.length === 20, `${lab}: kind/cols`);
+    const c = rows[0].cells;
+    console.log(lab, { sn: c[0], estate: c[1], tree: c[2], sci: c[3], zh: c[4], plant: c[14], antC: c[17], remarks: c[19] });
+    assert(c[0] === exp.sn, `${lab}: sn ${c[0]}`);
+    assert(c[1] === exp.estate, `${lab}: estate ${c[1]}`);
+    assert(c[2] === exp.tree, `${lab}: tree`);
+    assert(c[3] === exp.sci, `${lab}: sci expected ${exp.sci} got ${c[3]}`);
+    assert(c[4] === exp.zh, `${lab}: zh`);
+    if (!opts.skipMeas) {
+      assert(c[5] === exp.h && c[6] === exp.dbh && c[7] === exp.crown && c[8] === exp.girth,
+        `${lab}: measurements ${[c[5], c[6], c[7], c[8]]}`);
+    }
+    assert(c[9] === exp.amenity && c[10] === exp.form && c[11] === exp.health && c[12] === exp.structural,
+      `${lab}: conditions`);
+    assert(c[13] === exp.reason, `${lab}: reason`);
+    assert(c[14] === exp.planting, `${lab}: planting`);
+    assert(c[15] === exp.noReplace, `${lab}: noReplace ${JSON.stringify(c[15])}`);
+    if (!opts.skipDates) {
+      assert(c[16] === exp.antRemoval, `${lab}: antRemoval expected ${exp.antRemoval} got ${c[16]}`);
+      assert(c[17] === exp.antComp, `${lab}: antComp expected ${exp.antComp} got ${c[17]}`);
+      assert(c[18] === exp.actual, `${lab}: actual expected ${exp.actual} got ${c[18]}`);
+    }
+    assert(c[19] === exp.remarks, `${lab}: remarks expected ${exp.remarks} got ${c[19]}`);
+    console.log(lab, 'PASS');
+  }
+
+  assert(CHINESE_TO_SCI['洋紫荊'] === 'Bauhinia x blakeana', 'map 洋紫荊');
+  assert(isPlausibleScientificName('Bauhinia x blakeana'), 'plausible Bauhinia x blakeana');
+  const remRe = new RegExp('^' + REMOVAL_CASE_TOKEN_SRC + '$', 'i');
+  for (const tok of [
+    'T&Y-LKG-2026-002', 'T&Y-XXX-2026-001', 'ABC-DEF-2026-010',
+    'TNS-SCO-2026-002', 'TNS-KFK-2026-009',
+    'TY-FTA-2026-001', 'TY-FTA-2026-002', 'TY-SPWA-2026-001'
+  ]) {
+    assert(remRe.test(tok), 'case token should match ' + tok);
+  }
+  assert(!remRe.test('LKG-T0175') && !remRe.test('SPWA-0058') && !remRe.test('FTA-T0410'),
+    'tree IDs are not remark tokens');
+
+  const stem = path.join(samplesRem, 'Non-TPC_Tree_removal_summary_LKG');
+  checkLkg('lkg-pdfjs', stem + '-pdfjs.txt');
+  checkLkg('lkg-pdfjs-live', stem + '-pdfjs.txt', { normalize: true });
+  checkLkg('lkg-layout', stem + '-layout.txt');
+  // pdftotext splits Height/DBH from Crown/Girth and lists dates in a
+  // trailing column block, so measurements/dates are not reliable there.
+  checkLkg('lkg-pdftotext', stem + '-pdftotext.txt', { skipMeas: true, skipDates: true });
+})();
+
+
 console.log('ALL PDFJS TESTS PASSED');
