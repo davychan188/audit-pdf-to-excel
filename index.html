@@ -479,6 +479,13 @@ function normalizePdfText(text) {
     t = t.replace(new RegExp("([0-9\/])(" + REMOVAL_CASE_TOKEN_SRC + ")(?![0-9])", "gi"), "$1 $2");
     // All-caps estate (FU TAI ESTATE) glues to a following binomial: FUTAIESTATEAcacia mangium
     t = t.replace(/([A-Z]{3,})(Unidentified|[A-Z][a-z]{2,}\s+(?:spp\.|[x\u00d7X]\s+[a-z]{3,}|[a-z]{3,}(?:\s+(?:var\.|subsp\.)\s+[a-z]+)?))/g, "$1 $2");
+    // LUNGHANGESTATELH-T0093Spathodea / LH-T0093Sean after alphanumeric glue.
+    // Anchor on ESTATE/COURT so we do not split LH-T0093 into L + H-T0093
+    // (H-T0093 and TATELH-T0093 also match the Tree No. pattern).
+    t = t.replace(/([A-Z]*ESTATE|[A-Z]*COURT)([A-Z]{1,6}\d{0,2}-[A-Z]\d{3,5}|[A-Z]{2,6}-\d{3,5})(?![0-9A-Za-z-])/g, "$1 $2");
+    t = t.replace(new RegExp("(" + REMOVAL_TREE_ID_BODY + ")(?=[A-Z][a-z])", "gi"), "$1 ");
+    t = t.replace(/(\d)([A-Z]{3,}(?:ESTATE|COURT))\b/g, "$1 $2");
+    t = t.replace(/([A-Z]{3,}(?:ESTATE|COURT))(?=[A-Z][a-z])/g, "$1 ");
     t = t.replace(/(\d{4})(\d{1,2}\/\d{1,2}\/\d{4})/g, "$1 $2");
     // Unglue dateN/A and N/AN/A (pdf.js + alphanumeric glue: 17/11/2026N/AN/A)
     t = t.replace(/(\d)(N\/A)/gi, "$1 $2");
@@ -716,6 +723,7 @@ const TREE_REMOVAL_REASONS = [
     'Dead tree (except for dead trees of particular interest)',
     'Tree removal for the purpose of woodland management',
     'Removal of common undesirable species',
+    'Trunk structural problem',
     'Imminent danger',
     'Poor health',
     'Poor form',
@@ -815,14 +823,25 @@ function findRemovalReason(text) {
     let phrase = m[1]
         .replace(/\b\d{1,2}\/\d{1,2}\/\d{4}\b/g, " ")
         .replace(/\bN\/A\b/gi, " ")
-        .replace(/\b(Date|Signature|Submitted|Sean|Lee|TMS|Name|Post|Average|Good|Poor|High|Medium|Low|Condition|Form|Health|Structural|Amenity|Value|Measurements|Species|Scientific|Chinese|Girth|Crown|Spread|Size|Height|DBH)\b/gi, " ")
+        .replace(/\b(Structural\s+condition|Health\s+condition|Amenity\s+Value|Scientific\s+name|Chinese\s+name|Tree\s+No\.?|Estate\s*\/\s*Project)\b/gi, " ")
+        .replace(/\b(Date|Signature|Submitted|Sean|Lee|TMS|Name|Post|Average|Good|Poor|High|Medium|Low|Form|Amenity|Value|Measurements|Species|Scientific|Chinese|Girth|Crown|Spread|Size|Height|DBH)\b/gi, " ")
         .replace(/[()（）]/g, " ")
         .replace(/\s+/g, " ")
         .trim();
     // Drop leftover header crumbs / too-short noise; do not invent reasons
     if (!phrase || phrase.length < 3 || phrase.length > 120) return "";
     if (/^(for|tree|removal|the|of|and|to)$/i.test(phrase)) return "";
+    if (isGluedEstateScientificReason(phrase)) return "";
     return phrase;
+}
+
+/** Reject "LUNGHANGESTATE Schefflera actinophylla" leaking into Reason. */
+function isGluedEstateScientificReason(phrase) {
+    const s = String(phrase || "").trim();
+    if (!s) return false;
+    if (/^[A-Z]{6,}\s+/.test(s) && extractScientificNamesInOrder(s).length) return true;
+    if (/estate|court/i.test(s.replace(/\s+/g, "")) && extractScientificNamesInOrder(s).length) return true;
+    return false;
 }
 
 function findNoReplacementReason(text) {
@@ -908,6 +927,10 @@ function normalizeRemovalPdfText(text) {
     // Do NOT glue digit↔digit (would smash Height/DBH/Crown/Girth)
     // Unglue S/N stuck to Tree No. (FTA-T0515 or SPWA-0058); do not split case numbers (TY-SPWA-2026-001)
     t = t.replace(new RegExp("(\\d)(" + REMOVAL_TREE_ID_BODY + ")(?![0-9A-Za-z-])", "gi"), "$1 $2");
+    t = t.replace(/([A-Z]*ESTATE|[A-Z]*COURT)([A-Z]{1,6}\d{0,2}-[A-Z]\d{3,5}|[A-Z]{2,6}-\d{3,5})(?![0-9A-Za-z-])/g, "$1 $2");
+    t = t.replace(new RegExp("(" + REMOVAL_TREE_ID_BODY + ")(?=[A-Z][a-z])", "gi"), "$1 ");
+    t = t.replace(/(\d)([A-Z]{3,}(?:ESTATE|COURT))\b/g, "$1 $2");
+    t = t.replace(/([A-Z]{3,}(?:ESTATE|COURT))(?=[A-Z][a-z])/g, "$1 ");
     // Unglue measurement stuck to Amenity / Yes|No / letters
     t = t.replace(/(\d{7,12})(High|Medium|Low)\b/gi, (m, digs, am) => {
         const p = splitGluedMeasurements(digs);
@@ -951,13 +974,14 @@ const CHINESE_TO_SCI = {
     "大葉相思": "Acacia mangium",
     "馬占相思": "Acacia mangium",
     "雞蛋花": "Plumeria rubra",
-    "洋紫荊": "Bauhinia x blakeana"
+    "洋紫荊": "Bauhinia x blakeana",
+    "火焰樹": "Spathodea campanulata"
 };
 
 // Unidentified, Genus spp., Genus [x×] species, and var./subsp. forms.
 const SCI_NAME_CORE = "(?:Unidentified|[A-Z][a-z]{2,}\\s+(?:spp\\.|[x\\u00d7X]\\s+[a-z]{3,}|[a-z]{3,}(?:\\s+(?:var\\.|subsp\\.)\\s+[a-z]+)?))";
-const SKIP_SCI_GENUS = /^(Tree|Removal|Reason|Health|Form|Structural|Amenity|Compensatory|Anticipated|Actual|Remarks|Signature|Submitted|Measurements|Species|Scientific|Chinese|Crown|Girth|Size|Value|Estate|Project|Dead|Particular|Interest|Common|Undesirable|Woodland|Management|Steep|Slope|Leave|Growing|Restricted|Planter|Rocky|Presence|Imminent|Danger|Black|Triage|System|Guidelines|Under|Maintenance|Arboricultural|Applications|Name|Post|Sean|Lee|Date|Average|Poor|Good|Medium|High|Yes|No|Condition|Planting|Replacement|Spread|Low|Tai|Yuen|Shui|Chuen|Butterfly|Kam|Fung|Shek|Mun)$/i;
-const SKIP_SCI_SPECIES = /^(except|for|dead|trees|of|particular|interest|common|undesirable|species|purpose|woodland|management|under|arboricultural|maintenance|applications|condition|value|planting|replacement|compensatory|anticipated|actual|remarks|signature|submitted|measurements|spread|size|average|poor|good|medium|high|yes|no|project|estate|court|date|name|post)$/i;
+const SKIP_SCI_GENUS = /^(Tree|Removal|Reason|Health|Form|Structural|Amenity|Compensatory|Anticipated|Actual|Remarks|Signature|Submitted|Measurements|Species|Scientific|Chinese|Crown|Girth|Size|Value|Estate|Project|Dead|Particular|Interest|Common|Undesirable|Woodland|Management|Steep|Slope|Leave|Growing|Restricted|Planter|Rocky|Presence|Imminent|Danger|Black|Triage|System|Guidelines|Under|Maintenance|Arboricultural|Applications|Name|Post|Sean|Lee|Date|Average|Poor|Good|Medium|High|Yes|No|Condition|Planting|Replacement|Spread|Low|Trunk|Problem|Tai|Yuen|Shui|Chuen|Butterfly|Kam|Fung|Shek|Mun)$/i;
+const SKIP_SCI_SPECIES = /^(except|for|dead|trees|of|particular|interest|common|undesirable|species|purpose|woodland|management|under|arboricultural|maintenance|applications|condition|value|planting|replacement|compensatory|anticipated|actual|remarks|signature|submitted|measurements|spread|size|average|poor|good|medium|high|yes|no|project|estate|court|date|name|post|structural|problem|trunk)$/i;
 const SCI_HEADER_WORDS = /^(Measurements|Species|Scientific|Chinese|Signature|Submitted|Amenity|Health|Structural|Compensatory|Anticipated|Reason|Remarks|Particular|Interest|Average|Poor|Good|Medium|High|Low|Height|Crown|Girth|Spread|Value|Form|Date|Name|Post|Tree|Removal|Estate|Project|Applications|Maintenance)$/i;
 
 function normalizeScientificName(name) {
@@ -1230,17 +1254,22 @@ function parseTreeRowNear(text, treeId, index, nextIndex, prevIndex) {
         if (cjk) chinese = cjk[1];
 
         // Scientific immediately after Tree No. (TPC row order)
-        const sciSkip = SKIP_SCI_GENUS;
         const sciPost = forward.match(
             new RegExp("^" + escapeRegExp(treeId) + "\\s+" + sciRun, "i")
         );
-        if (sciPost && !sciSkip.test(sciPost[1].split(/\s+/)[0])) {
+        if (sciPost && isPlausibleScientificName(sciPost[1])) {
             scientific = sciPost[1].replace(/\s+/g, " ").trim();
         }
         if (!scientific) {
-            const sciNear = forward.match(new RegExp(sciRun));
-            if (sciNear && !sciSkip.test(sciNear[1].split(/\s+/)[0])) {
-                scientific = sciNear[1].replace(/\s+/g, " ").trim();
+            const sciRe = new RegExp(sciRun, "g");
+            let sciNear;
+            while ((sciNear = sciRe.exec(forward)) !== null) {
+                const cand = sciNear[1].replace(/\s+/g, " ").trim();
+                // Reasons like "Trunk structural problem" must not become Scientific Name
+                if (isPlausibleScientificName(cand)) {
+                    scientific = cand;
+                    break;
+                }
             }
         }
 
@@ -1412,7 +1441,21 @@ function parseTreeRemovalForm(text, filename) {
         const parsed = parseTreeRowNear(text, t.id, t.index, next ? next.index : null, prev ? prev.index : null);
         const forward = parsed.forward;
         const slice = parsed.slice;
-        let reason = findRemovalReason(forward) || findRemovalReason(slice) || defaultReason;
+        let reason = findRemovalReason(forward) || findRemovalReason(slice);
+        if (!reason && defaultReason) {
+            const windowText = (forward || "") + "\n" + (slice || "");
+            const flex = defaultReason.split(/\s+/).map(escapeRegExp).join("\\s+");
+            const inWindow = new RegExp(flex, "i").test(windowText);
+            // If the document has only one known reason, every row shares it
+            // (common when pdftotext parks the phrase in a trailing block).
+            // If several reasons appear, never copy one onto a tree that
+            // does not actually have it (and never leak another file's reason).
+            const uniqueKnown = TREE_REMOVAL_REASONS.filter(p => matchKnownPhrase(text, [p]) === p);
+            if (trees.length === 1 || inWindow || uniqueKnown.length === 1) {
+                reason = defaultReason;
+            }
+        }
+        if (reason && isGluedEstateScientificReason(reason)) reason = "";
         // Yes/No and dates: tree → next tree, so the previous row's planting cannot leak.
         const extras = extractRemovalExtras(forward, text);
         // A no-replacement phrase may start a few characters before Tree No.

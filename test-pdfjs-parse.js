@@ -984,4 +984,107 @@ check("easeful-keep-finding", path.join(samplesRem, "AS_EasefulCourt_dead_tree-p
 })();
 
 
+
+// TPC Tree Removal Summary (Lung Hang / LH-T0093, 20261116):
+// Reason is the free-text "Trunk structural problem", not a canned Dead-tree
+// reason and not the 未能自動擷取 fallback. "Trunk structural" is not a sci name.
+(() => {
+  const exp = {
+    type: 'TPC',
+    sn: '14',
+    estate: 'Lung Hang Estate',
+    tree: 'LH-T0093',
+    sci: 'Spathodea campanulata',
+    zh: '火焰樹',
+    h: '10',
+    dbh: '465',
+    crown: '5',
+    girth: '1460',
+    amenity: 'Low',
+    form: 'Poor',
+    health: 'Poor',
+    structural: 'Poor',
+    reason: 'Trunk structural problem',
+    planting: 'Yes',
+    noReplace: '',
+    antRemoval: '13/12/2026',
+    antComp: '13/5/2027',
+    actual: 'N/A',
+    remarks: 'TNS-LH-2026-004'
+  };
+  const fn = 'TPC_Tree removal summary_20261116.pdf';
+  assert(classifyRemovalTypeFromFilename(fn) === 'TPC', 'LH filename is TPC');
+  assert(classifyRemovalTypeFromFilename('Non-TPC_Tree removal summary_20261116.pdf') === 'Non-TPC', 'LH substring trap');
+  assert(!isPlausibleScientificName('Trunk structural'), 'Trunk structural is not a scientific name');
+  assert(isPlausibleScientificName('Spathodea campanulata'), 'Spathodea campanulata is plausible');
+  assert(CHINESE_TO_SCI['火焰樹'] === 'Spathodea campanulata', 'map 火焰樹');
+  assert(isGluedEstateScientificReason('LUNGHANGESTATE Schefflera actinophylla'), 'glued estate+sci is not a reason');
+  assert(!isGluedEstateScientificReason('Trunk structural problem'), 'real reason is not glued estate');
+
+  function checkLh(lab, file, opts) {
+    opts = opts || {};
+    let text = fs.readFileSync(file, 'utf8');
+    if (opts.normalize) text = normalizePdfText(text);
+    const rows = parseReport(text, fn);
+    assert(rows.length === 1, `${lab}: expected 1 row, got ${rows.length}`);
+    assert(rows[0].kind === 'removal' && rows[0].cells.length === 21, `${lab}: kind/cols`);
+    const part = removalParts(rows[0]);
+    const c = part.d;
+    console.log(lab, { type: part.type, sn: c[0], estate: c[1], tree: c[2], sci: c[3], zh: c[4], reason: c[13], plant: c[14], remarks: c[19] });
+    assert(part.type === exp.type, `${lab}: type ${part.type}`);
+    if (!opts.skipSnEstate) {
+      assert(c[0] === exp.sn, `${lab}: sn ${c[0]}`);
+      assert(c[1] === exp.estate, `${lab}: estate ${c[1]}`);
+    }
+    assert(c[2] === exp.tree, `${lab}: tree ${c[2]}`);
+    assert(c[3] === exp.sci, `${lab}: sci ${c[3]}`);
+    assert(c[4] === exp.zh, `${lab}: zh ${c[4]}`);
+    if (!opts.skipMeas) {
+      assert(c[5] === exp.h && c[6] === exp.dbh && c[7] === exp.crown && c[8] === exp.girth,
+        `${lab}: measurements ${[c[5], c[6], c[7], c[8]]}`);
+      assert(c[9] === exp.amenity && c[10] === exp.form && c[11] === exp.health && c[12] === exp.structural,
+        `${lab}: conditions`);
+    }
+    assert(c[13] === exp.reason, `${lab}: reason expected ${exp.reason} got ${c[13]}`);
+    assert(!/未能自動擷取/.test(c[13]), `${lab}: no fallback reason`);
+    assert(!/Dead tree/i.test(c[13]), `${lab}: no Dead-tree default`);
+    assert(c[14] === exp.planting, `${lab}: planting`);
+    assert(c[15] === exp.noReplace, `${lab}: noReplace ${JSON.stringify(c[15])}`);
+    assert(c[16] === exp.antRemoval, `${lab}: antRemoval ${c[16]}`);
+    assert(c[17] === exp.antComp, `${lab}: antComp ${c[17]}`);
+    assert(c[18] === exp.actual, `${lab}: actual ${c[18]}`);
+    assert(c[19] === exp.remarks, `${lab}: remarks ${c[19]}`);
+    const tsv = rows[0].cells.join('\t');
+    assert(!tsv.startsWith('S/N') && !tsv.startsWith('TPC / Non-TPC'), `${lab}: copy no header`);
+    assert(tsv.startsWith('TPC\t'), `${lab}: copy first field TPC: ${tsv.slice(0, 80)}`);
+    console.log(lab, 'PASS');
+  }
+
+  const stem = path.join(samplesRem, 'TPC_Tree_removal_summary_20261116_LH-T0093');
+  checkLh('lh-t0093-pdfjs', stem + '-pdfjs.txt');
+  checkLh('lh-t0093-pdfjs-live', stem + '-pdfjs.txt', { normalize: true });
+  checkLh('lh-t0093-layout', stem + '-layout.txt');
+  checkLh('lh-t0093-layout-live', stem + '-layout.txt', { normalize: true });
+  checkLh('lh-t0093-pdftotext', stem + '-pdftotext.txt');
+  // pdftotext + normalizePdfText can still glue Height/DBH and leave S/N / estate messy
+  checkLh('lh-t0093-pdftotext-live', stem + '-pdftotext.txt', { normalize: true, skipMeas: true, skipSnEstate: true });
+
+  // A canned Dead-tree reason elsewhere in the same text must not overwrite LH-T0093
+  const ty = fs.readFileSync(path.join(samplesRem, 'non-tpc-20261021-pdfjs.txt'), 'utf8');
+  const lh = fs.readFileSync(stem + '-pdfjs.txt', 'utf8');
+  const mixed = parseReport(normalizePdfText(ty + '\n' + lh), fn);
+  const lhRow = mixed.find(r => removalParts(r).d[2] === 'LH-T0093');
+  assert(lhRow, 'mixed text still has LH-T0093');
+  assert(removalParts(lhRow).d[13] === 'Trunk structural problem',
+    'mixed must not copy Dead tree onto LH-T0093: ' + removalParts(lhRow).d[13]);
+  assert(removalParts(lhRow).d[3] === 'Spathodea campanulata', 'mixed sci stays Spathodea');
+  const tyRow = mixed.find(r => removalParts(r).d[2] === 'TY-T0315');
+  if (tyRow) {
+    assert(/Dead tree/i.test(removalParts(tyRow).d[13]), 'TY row keeps its own Dead-tree reason');
+    assert(removalParts(tyRow).d[3] !== 'Trunk structural', 'TY sci is not Trunk structural');
+  }
+  console.log('lh-t0093-no-cross-reason-leak PASS');
+})();
+
+
 console.log('ALL PDFJS TESTS PASSED');
