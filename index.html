@@ -902,18 +902,44 @@ const CHINESE_TO_SCI = {
     "血桐": "Macaranga tanarius var. tomentosa",
     "濕地松(愛氏松)": "Pinus elliottii",
     "濕地松（愛氏松）": "Pinus elliottii",
-    "濕地松": "Pinus elliottii"
+    "濕地松": "Pinus elliottii",
+    "未能鑑別": "Unidentified",
+    "白蘭": "Michelia x alba",
+    "木蠟樹(野漆樹)": "Rhus succedanea",
+    "木蠟樹（野漆樹）": "Rhus succedanea",
+    "木蠟樹": "Rhus succedanea",
+    "野漆樹": "Rhus succedanea",
+    "木麻黃": "Casuarina equisetifolia"
 };
+
+// Unidentified, Genus spp., Genus [x×] species, and var./subsp. forms.
+const SCI_NAME_CORE = "(?:Unidentified|[A-Z][a-z]{2,}\\s+(?:spp\\.|[x\\u00d7X]\\s+[a-z]{3,}|[a-z]{3,}(?:\\s+(?:var\\.|subsp\\.)\\s+[a-z]+)?))";
+const SKIP_SCI_GENUS = /^(Tree|Removal|Reason|Health|Form|Structural|Amenity|Compensatory|Anticipated|Actual|Remarks|Signature|Submitted|Measurements|Species|Scientific|Chinese|Crown|Girth|Size|Value|Estate|Project|Dead|Particular|Interest|Common|Undesirable|Woodland|Management|Steep|Slope|Leave|Growing|Restricted|Planter|Rocky|Presence|Imminent|Danger|Black|Triage|System|Guidelines|Under|Maintenance|Arboricultural|Applications|Name|Post|Sean|Lee|Date|Average|Poor|Good|Medium|High|Yes|No|Condition|Planting|Replacement|Spread|Low|Tai|Yuen|Shui|Chuen|Butterfly|Kam|Fung|Shek|Mun)$/i;
+const SKIP_SCI_SPECIES = /^(except|for|dead|trees|of|particular|interest|common|undesirable|species|purpose|woodland|management|under|arboricultural|maintenance|applications|condition|value|planting|replacement|compensatory|anticipated|actual|remarks|signature|submitted|measurements|spread|size|average|poor|good|medium|high|yes|no|project|estate|court|date|name|post)$/i;
+const SCI_HEADER_WORDS = /^(Measurements|Species|Scientific|Chinese|Signature|Submitted|Amenity|Health|Structural|Compensatory|Anticipated|Reason|Remarks|Particular|Interest|Average|Poor|Good|Medium|High|Low|Height|Crown|Girth|Spread|Value|Form|Date|Name|Post|Tree|Removal|Estate|Project|Applications|Maintenance)$/i;
+
+function normalizeScientificName(name) {
+    return String(name || "").replace(/\s+/g, " ").trim();
+}
+
+function isPlausibleScientificName(name) {
+    const t = normalizeScientificName(name);
+    if (!t) return false;
+    if (!new RegExp("^" + SCI_NAME_CORE + "$").test(t)) return false;
+    const parts = t.split(/\s+/);
+    if (SKIP_SCI_GENUS.test(parts[0])) return false;
+    if (parts[1] && SKIP_SCI_SPECIES.test(parts[1])) return false;
+    return true;
+}
 
 function extractScientificNamesInOrder(text) {
     const names = [];
-    const re = /\b([A-Z][a-z]{2,})\s+(spp\.|[a-z]{3,}(?:\s+(?:var\.|subsp\.)\s+[a-z]+)?)\b/g;
-    const skipGenus = /^(Tree|Removal|Reason|Health|Form|Structural|Amenity|Compensatory|Anticipated|Actual|Remarks|Signature|Submitted|Measurements|Species|Scientific|Chinese|Crown|Girth|Size|Value|Estate|Project|Dead|Particular|Interest|Common|Undesirable|Woodland|Management|Steep|Slope|Leave|Growing|Restricted|Planter|Rocky|Presence|Imminent|Danger|Black|Triage|System|Guidelines|Under|Maintenance|Arboricultural|Applications|Name|Post|Sean|Lee|Date|Average|Poor|Good|Medium|High|Yes|No|Condition|Planting|Replacement|Spread|Medium|Low|Tai|Yuen|Shui|Chuen|Butterfly|Kam|Fung|Shek|Mun)$/i;
-    const skipSpecies = /^(except|for|dead|trees|of|particular|interest|common|undesirable|species|purpose|woodland|management|under|arboricultural|maintenance|applications|condition|value|planting|replacement|compensatory|anticipated|actual|remarks|signature|submitted|measurements|spread|size|average|poor|good|medium|high|yes|no|project|estate|court|date|name|post)$/i;
+    const re = new RegExp("\\b(" + SCI_NAME_CORE + ")\\b", "g");
     let m;
     while ((m = re.exec(text)) !== null) {
-        if (skipGenus.test(m[1]) || skipSpecies.test(m[2])) continue;
-        names.push(`${m[1]} ${m[2]}`);
+        const name = normalizeScientificName(m[1]);
+        if (!isPlausibleScientificName(name)) continue;
+        names.push(name);
     }
     return names;
 }
@@ -941,7 +967,9 @@ function extractRemovalExtras(slice, fullText) {
         planting = ynMatch[1].charAt(0).toUpperCase() + ynMatch[1].slice(1).toLowerCase();
     }
 
-    const noReplaceReason = findNoReplacementReason(slice) || findNoReplacementReason(fullText);
+    // Only search the row window here. A document-wide fallback would copy
+    // another row's "Steep slope..." onto a Yes-planting row that has no reason.
+    const noReplaceReason = findNoReplacementReason(slice);
 
     const afterYn = ynMatch ? slice.slice(ynMatch.index + ynMatch[0].length) : slice;
     const tokens = [];
@@ -1043,23 +1071,75 @@ function splitGluedMeasurements(digits) {
     return best;
 }
 
-function parseTreeRowNear(text, treeId, index, nextIndex) {
+function isMeasurementSerial(sn, parsed) {
+    const s = String(sn || "");
+    if (!s || !parsed) return false;
+    return String(parsed.girth) === s || String(parsed.dbh) === s;
+}
+
+function isHeaderPlaceName(place) {
+    const first = (String(place || "").trim().split(/\s+/)[0] || "");
+    // "Estate" / "Court" / "Project" are part of real place names (Tai Yuen Estate).
+    return SCI_HEADER_WORDS.test(first) && !/^(Estate|Court|Project)$/i.test(first);
+}
+
+function extractRowSerialNumber(text, treeId, index, prevIndex, measurements) {
+    const start = prevIndex != null ? prevIndex : Math.max(0, index - 400);
+    const window = text.slice(start, index + treeId.length);
+    const take = (raw) => {
+        if (!raw || isMeasurementSerial(raw, measurements)) return "";
+        const n = Number(raw);
+        return n >= 1 ? String(n) : "";
+    };
+
+    const direct = text.slice(Math.max(0, index - 12), index).match(/(\d{1,3})\s*$/);
+    if (direct) {
+        const sn = take(direct[1]);
+        if (sn) return sn;
+    }
+
+    // "26 Tai Yuen Estate TY-T0315" / "5 Shui Chuen O SCO-A0003"
+    const placeTree = window.match(new RegExp(
+        "(?:^|[^0-9])(\\d{1,3})\\s+([A-Z][A-Za-z0-9.()]*(?:\\s+[A-Z][A-Za-z0-9.()]*){0,4})\\s+" + escapeRegExp(treeId)
+    ));
+    if (placeTree && !isHeaderPlaceName(placeTree[2])) {
+        const sn = take(placeTree[1]);
+        if (sn) return sn;
+    }
+
+    // pdftotext may emit "5 / Shui Chuen O" before a later Tree No.
+    const pairRe = /(?:^|[^0-9])(\d{1,3})\s+([A-Z][A-Za-z0-9.()]*(?:\s+[A-Z][A-Za-z0-9.()]*){0,4})(?=\s|$)/g;
+    let m, last = "";
+    while ((m = pairRe.exec(window)) !== null) {
+        if (isHeaderPlaceName(m[2])) continue;
+        const sn = take(m[1]);
+        if (sn) last = sn;
+    }
+    if (last) return last;
+
+    // TPC pdftotext: "S/N / 3 / Submitted by: / FU TAI ESTATE / Tree No. / FTA-T0515"
+    if (prevIndex == null) {
+        const head = text.slice(0, index);
+        const headerAt = head.search(/\bS\/N\b/i);
+        if (headerAt >= 0) {
+            const after = head.slice(headerAt + 3);
+            const nums = after.matchAll(/(?:^|[^0-9])(\d{1,3})(?![0-9])/g);
+            for (const nm of nums) {
+                const sn = take(nm[1]);
+                if (sn) return sn;
+            }
+        }
+    }
+    return "";
+}
+
+function parseTreeRowNear(text, treeId, index, nextIndex, prevIndex) {
     const sliceStart = Math.max(0, index - 80);
-    const sliceEnd = nextIndex != null ? nextIndex : Math.min(text.length, index + 900);
+    const sliceEnd = nextIndex != null ? nextIndex : text.length;
     const slice = text.slice(sliceStart, sliceEnd);
     const forward = text.slice(index, sliceEnd);
 
     let sn = "";
-    const before = text.slice(Math.max(0, index - 12), index);
-    const snm = before.match(/(\d{1,3})\s*$/);
-    if (snm) {
-        sn = String(Number(snm[1]));
-    } else {
-        // pdftotext: "26   Tai Yuen Estate   TY-T0315"
-        const wider = text.slice(Math.max(0, index - 80), index + treeId.length);
-        const snm2 = wider.match(new RegExp("(?:^|[^0-9])(\\d{1,3})\\s+(?:[A-Za-z][\\s\\S]{0,60}?)?" + escapeRegExp(treeId)));
-        if (snm2) sn = String(Number(snm2[1]));
-    }
 
     let chinese = "";
     let height = "", dbh = "", crown = "", girth = "";
@@ -1067,7 +1147,7 @@ function parseTreeRowNear(text, treeId, index, nextIndex) {
     let scientific = "";
 
     const cjkRun = "([\\u4e00-\\u9fff]+(?:[（(][\\u4e00-\\u9fff]+[）)])?)";
-    const sciRun = "([A-Z][a-z]{2,}\\s+(?:spp\\.|[a-z]{3,}(?:\\s+(?:var\\.|subsp\\.)\\s+[a-z]+)?))";
+    const sciRun = "(" + SCI_NAME_CORE + ")";
     const measTail =
         "(\\d+(?:\\.\\d+)?)\\s+(\\d+)\\s+(\\d+(?:\\.\\d+)?)\\s+(\\d+)\\s+" +
         "(High|Medium|Low)\\s+(Good|Average|Poor)\\s+(Good|Average|Poor)\\s+(Good|Average|Poor)";
@@ -1107,7 +1187,7 @@ function parseTreeRowNear(text, treeId, index, nextIndex) {
         if (cjk) chinese = cjk[1];
 
         // Scientific immediately after Tree No. (TPC row order)
-        const sciSkip = /^(Estate|Project|Tree|Name|Chinese|Sean|Lee|Signature|Submitted|Measurements|Species|Scientific)$/i;
+        const sciSkip = SKIP_SCI_GENUS;
         const sciPost = forward.match(
             new RegExp("^" + escapeRegExp(treeId) + "\\s+" + sciRun, "i")
         );
@@ -1214,11 +1294,19 @@ function parseTreeRowNear(text, treeId, index, nextIndex) {
     // Scientific name immediately before tree id (some Non-TPC layouts)
     if (!scientific) {
         const pre = text.slice(Math.max(0, index - 120), index);
-        const sciPre = pre.match(/\b([A-Z][a-z]{2,})\s+(spp\.|[a-z]{3,}(?:\s+(?:var\.|subsp\.)\s+[a-z]+)?)\s*$/);
-        if (sciPre && !/^(Estate|Project|Tree|Name|Chinese)$/i.test(sciPre[1])) {
-            scientific = `${sciPre[1]} ${sciPre[2]}`;
+        const sciPre = pre.match(new RegExp("\\b(" + SCI_NAME_CORE + ")\\s*$"));
+        if (sciPre && isPlausibleScientificName(sciPre[1])) {
+            scientific = normalizeScientificName(sciPre[1]);
         }
     }
+
+    if (scientific) {
+        scientific = normalizeScientificName(scientific);
+        if (!isPlausibleScientificName(scientific)) scientific = "";
+    }
+
+    sn = extractRowSerialNumber(text, treeId, index, prevIndex, { height, dbh, crown, girth }) || sn;
+    if (isMeasurementSerial(sn, { height, dbh, crown, girth })) sn = "";
 
     return {
         sn, chinese, height, dbh, crown, girth, amenity, form, health, structural, scientific,
@@ -1275,28 +1363,43 @@ function parseTreeRemovalForm(text, filename) {
     for (let i = 0; i < trees.length; i++) {
         const t = trees[i];
         const next = trees[i + 1];
-        const parsed = parseTreeRowNear(text, t.id, t.index, next ? next.index : null);
+        const prev = i > 0 ? trees[i - 1] : null;
+        const parsed = parseTreeRowNear(text, t.id, t.index, next ? next.index : null, prev ? prev.index : null);
         const forward = parsed.forward;
         const slice = parsed.slice;
         let reason = findRemovalReason(forward) || findRemovalReason(slice) || defaultReason;
-        const extras = extractRemovalExtras(slice, text);
+        // Yes/No and dates: tree → next tree, so the previous row's planting cannot leak.
+        const extras = extractRemovalExtras(forward, text);
+        // A no-replacement phrase may start a few characters before Tree No.
+        // (TPC layout wraps "Leave growing space..." to the left of the ID).
+        // Keep the prefix short so the previous row's "Steep slope..." is not reused.
+        if (!extras.noReplaceReason) {
+            const reasonStart = Math.max(prev ? prev.index : 0, t.index - 55);
+            const reasonEnd = next ? next.index : text.length;
+            extras.noReplaceReason = findNoReplacementReason(text.slice(reasonStart, reasonEnd));
+        }
         if (!extras.planting && defaultExtras.planting) extras.planting = defaultExtras.planting;
         if (!extras.antRemoval && defaultExtras.antRemoval) extras.antRemoval = defaultExtras.antRemoval;
         if (!extras.antComp && defaultExtras.antComp) extras.antComp = defaultExtras.antComp;
         if (!extras.actual && defaultExtras.actual) extras.actual = defaultExtras.actual;
         if (!extras.remarks && defaultExtras.remarks) extras.remarks = defaultExtras.remarks;
-        if (!extras.noReplaceReason && defaultExtras.noReplaceReason) extras.noReplaceReason = defaultExtras.noReplaceReason;
+        // Do not copy another row's no-replacement reason onto a Yes-planting row.
+        if (!extras.noReplaceReason && extras.planting !== "Yes" && defaultExtras.noReplaceReason) {
+            extras.noReplaceReason = defaultExtras.noReplaceReason;
+        }
 
         const rowCase = (extras.remarks && /^TNS-/i.test(extras.remarks)) ? extras.remarks : caseNo;
         const estate = resolveEstate(extractEstateNear(text, t.index) || defaultEstate, t.id, rowCase) || "Unknown Estate";
 
-        let scientific = parsed.scientific || sciForTrees[i] || "";
+        // Prefer the name printed next to this tree. Do not overwrite a printed
+        // scientific name from the Chinese→sci map or a trailing list zip
+        // (pdf.js may emit that list out of visual / table order).
+        let scientific = isPlausibleScientificName(parsed.scientific) ? parsed.scientific : "";
         if (!scientific && parsed.chinese && CHINESE_TO_SCI[parsed.chinese]) {
             scientific = CHINESE_TO_SCI[parsed.chinese];
         }
-        // Prefer Chinese→sci map when list zip looks wrong (optional override if map exists)
-        if (parsed.chinese && CHINESE_TO_SCI[parsed.chinese]) {
-            scientific = CHINESE_TO_SCI[parsed.chinese];
+        if (!scientific) {
+            scientific = sciForTrees[i] || "";
         }
 
         rows.push(buildRemovalRow({
@@ -1322,6 +1425,42 @@ function parseTreeRemovalForm(text, filename) {
             remarks: extras.remarks || rowCase || "",
             removalKind
         }));
+    }
+    fillMissingSerialNumbers(rows);
+    return rows;
+}
+
+function fillMissingSerialNumbers(rows) {
+    const nums = rows.map(r => {
+        const s = r && r.cells ? r.cells[0] : "";
+        return /^\d+$/.test(s) ? Number(s) : null;
+    });
+    let changed = true;
+    while (changed) {
+        changed = false;
+        for (let i = 0; i < nums.length; i++) {
+            if (nums[i] != null) continue;
+            const prev = i > 0 ? nums[i - 1] : null;
+            const next = i + 1 < nums.length ? nums[i + 1] : null;
+            let guess = null;
+            if (prev != null && next != null && next === prev + 2) guess = prev + 1;
+            else if (prev != null && next == null) guess = prev + 1;
+            else if (prev == null && next != null && next > 1) guess = next - 1;
+            if (guess != null && guess >= 1
+                && (prev == null || guess === prev + 1)
+                && (next == null || guess === next - 1)) {
+                nums[i] = guess;
+                changed = true;
+            }
+        }
+    }
+    for (let i = 0; i < rows.length; i++) {
+        if (nums[i] == null) continue;
+        const want = String(nums[i]);
+        if (rows[i].cells[0] !== want) {
+            rows[i].cells[0] = want;
+            if (rows[i].extras) rows[i].extras.sn = want;
+        }
     }
     return rows;
 }

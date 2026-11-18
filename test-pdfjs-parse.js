@@ -604,4 +604,105 @@ check("easeful-keep-finding", path.join(samplesRem, "AS_EasefulCourt_dead_tree-p
   console.log("removal-layout-css PASS");
 })();
 
+
+// Shui Chuen O Non-TPC Tree Removal Summary (TNS-SCO-2026-002):
+// Unidentified / Michelia x alba must stay aligned with the printed Chinese names.
+// pdf.js emits the trailing scientific-name list as Casuarina first (not table order).
+(() => {
+  const reason = 'Dead tree (except for dead trees of particular interest)';
+  const steep = 'Steep slope (over 35 degrees)';
+  const remarks = 'TNS-SCO-2026-002';
+  const estate = 'Shui Chuen O Estate';
+  const base = [
+    { sn: '5', tree: 'SCO-A0003', sci: 'Unidentified', zh: '未能鑑別',
+      h: '6', dbh: '160', crown: '3', girth: '502',
+      amenity: 'Low', form: 'Poor', health: 'Poor', structural: 'Poor',
+      reason, planting: 'No', noReplace: steep,
+      antRemoval: '14/11/2026', antComp: 'N/A', actual: 'N/A', remarks },
+    { sn: '6', tree: 'SCO-T0025', sci: 'Michelia x alba', zh: '白蘭',
+      h: '6', dbh: '175', crown: '1', girth: '550',
+      amenity: 'Low', form: 'Average', health: 'Poor', structural: 'Average',
+      reason, planting: 'Yes', noReplace: '',
+      antRemoval: '14/11/2026', antComp: '14/4/2027', actual: 'N/A', remarks },
+    { sn: '7', tree: 'SCO-T4439', sci: 'Rhus succedanea', zh: '木蠟樹(野漆樹)',
+      h: '5', dbh: '170', crown: '4', girth: '534',
+      amenity: 'Low', form: 'Average', health: 'Poor', structural: 'Average',
+      reason, planting: 'No', noReplace: steep,
+      antRemoval: '14/11/2026', antComp: 'N/A', actual: 'N/A', remarks },
+    { sn: '8', tree: 'SCO-T4440', sci: 'Pinus elliottii', zh: '濕地松(愛氏松)',
+      h: '7', dbh: '205', crown: '1', girth: '644',
+      amenity: 'Low', form: 'Average', health: 'Poor', structural: 'Average',
+      reason, planting: 'No', noReplace: steep,
+      antRemoval: '14/11/2026', antComp: 'N/A', actual: 'N/A', remarks },
+    { sn: '9', tree: 'SCO-T4514', sci: 'Casuarina equisetifolia', zh: '木麻黃',
+      h: '6', dbh: '140', crown: '1', girth: '440',
+      amenity: 'Low', form: 'Average', health: 'Poor', structural: 'Average',
+      reason, planting: 'No', noReplace: steep,
+      antRemoval: '14/11/2026', antComp: 'N/A', actual: 'N/A', remarks }
+  ];
+
+  function checkScoRows(lab, file, opts) {
+    opts = opts || {};
+    const text = fs.readFileSync(file, 'utf8');
+    const rows = parseReport(text, 'Non-TPC_Tree_removal_summary_SCO.pdf');
+    assert(rows.length === 5, `${lab}: expected 5 rows, got ${rows.length}`);
+    assert(rows.every(r => r.kind === 'removal'), `${lab}: kind`);
+    assert(rows.every(r => r.cells.length === 20), `${lab}: 20 cols`);
+    const c = rows.map(r => r.cells);
+    console.log(lab, c.map(r => ({ sn: r[0], tree: r[2], sci: r[3], zh: r[4], plant: r[14], norep: r[15], antC: r[17] })));
+    assert(c.every(r => r[1] === estate), `${lab}: estate ${c[0] && c[0][1]}`);
+    for (let i = 0; i < 5; i++) {
+      const exp = base[i];
+      const skipExtras = opts.skipExtras && opts.skipExtras.includes(exp.tree);
+      assert(c[i][0] === exp.sn, `${lab}: row ${i} sn expected ${exp.sn} got ${c[i][0]}`);
+      assert(c[i][2] === exp.tree, `${lab}: row ${i} tree`);
+      assert(c[i][3] === exp.sci, `${lab}: row ${i} sci expected ${exp.sci} got ${c[i][3]}`);
+      assert(c[i][4] === exp.zh, `${lab}: row ${i} zh expected ${exp.zh} got ${c[i][4]}`);
+      assert(c[i][5] === exp.h && c[i][6] === exp.dbh && c[i][7] === exp.crown && c[i][8] === exp.girth,
+        `${lab}: row ${i} measurements ${[c[i][5], c[i][6], c[i][7], c[i][8]]}`);
+      assert(c[i][9] === exp.amenity && c[i][10] === exp.form && c[i][11] === exp.health && c[i][12] === exp.structural,
+        `${lab}: row ${i} conditions`);
+      assert(c[i][13] === exp.reason, `${lab}: row ${i} reason`);
+      if (!skipExtras) {
+        assert(c[i][14] === exp.planting, `${lab}: row ${i} planting expected ${exp.planting} got ${c[i][14]}`);
+        assert(c[i][15] === exp.noReplace, `${lab}: row ${i} noReplace expected ${JSON.stringify(exp.noReplace)} got ${JSON.stringify(c[i][15])}`);
+        assert(c[i][16] === exp.antRemoval, `${lab}: row ${i} antRemoval`);
+        assert(c[i][17] === exp.antComp, `${lab}: row ${i} antComp expected ${exp.antComp} got ${c[i][17]}`);
+        assert(c[i][18] === exp.actual, `${lab}: row ${i} actual`);
+      }
+      assert(c[i][19] === exp.remarks, `${lab}: row ${i} remarks`);
+    }
+    // Must not "correct" Unidentified / 未能鑑別 to Casuarina / 木麻黃
+    assert(c[0][3] === 'Unidentified' && c[0][4] === '未能鑑別', `${lab}: keep Unidentified`);
+    assert(c[4][3] === 'Casuarina equisetifolia' && c[4][4] === '木麻黃', `${lab}: Casuarina stays on T4514`);
+    console.log(lab, 'PASS');
+  }
+
+  const listed = extractScientificNamesInOrder(
+    'Unidentified Michelia x alba Rhus succedanea Pinus elliottii Casuarina equisetifolia Macaranga tanarius var. tomentosa Dead tree (except for dead trees of particular interest)'
+  );
+  assert(listed.join('|') === 'Unidentified|Michelia x alba|Rhus succedanea|Pinus elliottii|Casuarina equisetifolia|Macaranga tanarius var. tomentosa',
+    'sci list includes Unidentified, hybrid x, and var.: ' + listed.join('|'));
+  assert(isPlausibleScientificName('Unidentified') && isPlausibleScientificName('Michelia x alba'), 'plausible Unidentified / hybrid');
+  assert(isPlausibleScientificName('Michelia \u00d7 alba'), 'plausible multiplication-sign hybrid');
+  assert(!isPlausibleScientificName('Dead tree'), 'Dead tree is not a scientific name');
+  assert(CHINESE_TO_SCI['未能鑑別'] === 'Unidentified', 'map 未能鑑別');
+  assert(CHINESE_TO_SCI['白蘭'] === 'Michelia x alba', 'map 白蘭');
+  assert(CHINESE_TO_SCI['木麻黃'] === 'Casuarina equisetifolia', 'map 木麻黃');
+
+  const pdfjsText = fs.readFileSync(path.join(samplesRem, 'Non-TPC_Tree_removal_summary_SCO-pdfjs.txt'), 'utf8');
+  const pdfjsList = extractScientificNamesInOrder(normalizeRemovalPdfText(pdfjsText));
+  assert(pdfjsList[0] === 'Casuarina equisetifolia', 'pdf.js list is out of table order (Casuarina first): ' + pdfjsList.join('|'));
+  assert(pdfjsList.includes('Unidentified') && pdfjsList.includes('Michelia x alba'), 'pdf.js list keeps skipped names');
+
+  checkScoRows('sco-202609-pdfjs', path.join(samplesRem, 'Non-TPC_Tree_removal_summary_SCO-pdfjs.txt'));
+  checkScoRows('sco-202609-layout', path.join(samplesRem, 'Non-TPC_Tree_removal_summary_SCO-layout.txt'));
+  // pdftotext parks Yes/No and dates in a trailing column block, so T0025
+  // planting/compensatory dates cannot be recovered reliably from that dump.
+  checkScoRows('sco-202609-pdftotext', path.join(samplesRem, 'Non-TPC_Tree_removal_summary_SCO-pdftotext.txt'), {
+    skipExtras: ['SCO-T0025']
+  });
+})();
+
+
 console.log('ALL PDFJS TESTS PASSED');
