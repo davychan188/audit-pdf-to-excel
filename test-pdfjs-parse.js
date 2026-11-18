@@ -1087,4 +1087,73 @@ check("easeful-keep-finding", path.join(samplesRem, "AS_EasefulCourt_dead_tree-p
 })();
 
 
+// AS Audit: Findings with no tree number must not appear in TNS / Excel.
+// Kwai Chung (2) is a general-items comment (stock sentence plus extra
+// site-audit prose, no Tree ID) and must yield 0 rows — not a blank Tree ID
+// and not the 未能自動擷取 placeholder. Kwai Shing East numbered findings stay,
+// including four KSE-G002 NT lines and KSE-T0257 "50% dieback".
+(() => {
+  const kcDumps = [
+    ["kc2-general-pdftotext", "AS_Audit_KwaiChung2_general_items-pdftotext.txt"],
+    ["kc2-general-layout", "AS_Audit_KwaiChung2_general_items-layout.txt"],
+    ["kc2-general-pdfjs", "AS_Audit_KwaiChung2_general_items-pdfjs.txt"],
+    ["kc2-general-pdfjs-live", "AS_Audit_KwaiChung2_general_items-pdfjs.txt", true],
+    ["kc2-general-pdftotext-live", "AS_Audit_KwaiChung2_general_items-pdftotext.txt", true],
+    ["kc2-general-layout-live", "AS_Audit_KwaiChung2_general_items-layout.txt", true]
+  ];
+  for (const [lab, file, doNorm] of kcDumps) {
+    let text = fs.readFileSync(path.join(samplesRem, file), "utf8");
+    if (doNorm) text = normalizePdfText(text);
+    const rows = parseReport(text, "AS_Audit_KwaiChung2_general_items.pdf");
+    const detail = rows.map(r => {
+      const c = r.cells || r;
+      return { tree: c[4], obs: c[5] };
+    });
+    assert(rows.length === 0, lab + ": expected 0 TNS rows, got " + rows.length + ": " + JSON.stringify(detail));
+    assert(!rows.some(r => /未能自動擷取/.test(String((r.cells || r)[5] || ""))), lab + ": no placeholder");
+    console.log(lab, "PASS (0 rows)");
+  }
+
+  const expTrees = [
+    "KSE-G002", "KSE-G002", "KSE-G002", "KSE-G002",
+    "KSE-T0158", "KSE-T0149", "KSE-T0257", "KSE-T373"
+  ];
+  const expObs = [
+    "2B NT1 Dead tree",
+    "2B NT2 Dead tree",
+    "2B NT3 Dead tree",
+    "2B NT4 Dead branch",
+    "Dead frond",
+    "Drooping branches",
+    "50% dieback",
+    "No foliage"
+  ];
+  const kseDumps = [
+    ["kse-pdftotext", "AS_Audit_KwaiShingEast_KSE-2026-003-pdftotext.txt"],
+    ["kse-layout", "AS_Audit_KwaiShingEast_KSE-2026-003-layout.txt"],
+    ["kse-pdfjs", "AS_Audit_KwaiShingEast_KSE-2026-003-pdfjs.txt"],
+    ["kse-pdfjs-live", "AS_Audit_KwaiShingEast_KSE-2026-003-pdfjs.txt", true],
+    ["kse-pdftotext-live", "AS_Audit_KwaiShingEast_KSE-2026-003-pdftotext.txt", true],
+    ["kse-layout-live", "AS_Audit_KwaiShingEast_KSE-2026-003-layout.txt", true]
+  ];
+  for (const [lab, file, doNorm] of kseDumps) {
+    let text = fs.readFileSync(path.join(samplesRem, file), "utf8");
+    if (doNorm) text = normalizePdfText(text);
+    const rows = parseReport(text, "AS_Audit_KwaiShingEast_KSE-2026-003.pdf");
+    const c = rows.map(r => r.cells || r);
+    const got = c.map(r => r[4] + "=" + r[5]).join(" | ");
+    assert(rows.length === 8, lab + ": expected 8 numbered rows, got " + rows.length + ": " + got);
+    assert(rows.every(r => r.kind === "audit"), lab + ": kind audit");
+    assert(c.every(r => r[0] === "AS"), lab + ": source AS");
+    assert(c.every(r => r[2] === "AS-KSE-2026-003"), lab + ": case " + (c[0] && c[0][2]));
+    assert(c.every(r => isValidTreeId(r[4])), lab + ": every row has a valid Tree ID: " + c.map(r => r[4]));
+    assert(c.every(r => String(r[4]).trim() !== ""), lab + ": no empty Tree ID");
+    assert(c.every(r => !/未能自動擷取/.test(String(r[5] || ""))), lab + ": no placeholder obs");
+    assert(c.map(r => r[4]).join(",") === expTrees.join(","), lab + ": trees " + c.map(r => r[4]));
+    assert(c.map(r => r[5]).join("|") === expObs.join("|"), lab + ": obs " + c.map(r => r[5]).join("|"));
+    console.log(lab, "PASS", got);
+  }
+})();
+
+
 console.log('ALL PDFJS TESTS PASSED');

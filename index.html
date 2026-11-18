@@ -628,7 +628,7 @@ function normalizeObservation(treeId, obs) {
     o = o.replace(/\s*#\d+.*$/i, "").trim();
     o = o.replace(/\s+(?:[A-Z]{1,6}\d{0,2}-(?:LL\d{1,2}|[A-Z]\d{3,5}))\b.*$/i, "").trim();
     o = o.replace(/\s+(?:[A-Z]{1,6}\d{0,2}_(?:LL\d{1,2}|[A-Z]\d{3,5}))\b.*$/i, "").trim();
-    o = o.replace(/\s*(Agreement\s+No\.|Provision\s+of\s+arboricultural|AS\s+Contractor|Contract\s+No\.|Audited\s+by|Photos\b|Referral\b|Location\b|Case\s*No|Date\s*:).*$/i, "").trim();
+    o = o.replace(/\s*(Agreement\s+No\.|Provision\s+of\s+arboricultural|AS\s+Contractor|Contract\s+No\.|Audited\s+by|Photos\b|Referral\b|Location\b|Case\s*No|Date\s*:|From\s*:|Inspection\s+Officer|Tree\s+Information).*$/i, "").trim();
     if (/^&\s*/.test(o)) {
         const shortId = treeId.match(/-([A-Z]\d{3,5})$/i);
         if (shortId) o = (shortId[1] + " " + o).replace(/\s+/g, " ").trim();
@@ -650,7 +650,7 @@ function extractFindingsFromChunk(chunk, findings) {
     // Standard PREFIX-X####_obs / PREFIX-LL#_obs ; optional #N; spaces around _ allowed
     // Also accept underscore IDs if normalizePdfText did not rewrite them yet
     const idTok = "[A-Z]{1,6}\\d{0,2}\\s*[-_]\\s*(?:LL\\s*\\d{1,2}|[A-Z]\\s*\\d{3,5})";
-    const treeRe = new RegExp("#?\\d*\\s*(" + idTok + ")\\s*[_:=\\-\\s]+\\s*(&?\\s*[A-Za-z0-9][A-Za-z0-9\\s\\/_\\-\\.&]{0,100}?)(?=\\s*(?:#\\s*\\d+|#?\\d*\\s*" + idTok + "|Photos\\b|Audited\\b|Agreement\\s+No\\.|Provision\\s+of\\s+arboricultural|Referral\\b|Location\\b|Case\\b|Date\\s*:|Estate\\/|Estate\\b|$))", "gi");
+    const treeRe = new RegExp("#?\\d*\\s*(" + idTok + ")\\s*[_:=\\-\\s]+\\s*(&?\\s*[A-Za-z0-9][A-Za-z0-9\\s\\/_\\-\\.&%()]{0,100}?)(?=\\s*(?:#\\s*\\d+|#?\\d*\\s*" + idTok + "|Photos\\b|Audited\\b|Agreement\\s+No\\.|Provision\\s+of\\s+arboricultural|Referral\\b|Location\\b|Case\\b|Date\\s*:|From\\s*:|Inspection\\s+Officer|Tree\\s+Information|Estate\\/|Estate\\b|$))", "gi");
     let m;
     while ((m = treeRe.exec(chunk)) !== null) {
         pushFinding(findings, normalizeTreeId(m[1].replace(/_/g, "-")), m[2]);
@@ -671,7 +671,7 @@ function extractFindingsFromChunk(chunk, findings) {
         let raw = chunk.slice(start, stop);
         if (!/^\s*[_:\-\s]/.test(raw)) continue;
         raw = raw.replace(/^\s*[_:\-=\s]+\s*/, "");
-        if (/^[A-Za-z&]/.test(raw.trim())) pushFinding(findings, normalizeTreeId(ids[i].id.replace(/_/g, "-")), raw);
+        if (/^[A-Za-z0-9&%]/.test(raw.trim())) pushFinding(findings, normalizeTreeId(ids[i].id.replace(/_/g, "-")), raw);
     }
 }
 
@@ -693,11 +693,15 @@ function extractFindings(text) {
         || /[A-Z]{1,6}\d{0,2}\s*[-_]\s*(?:LL\s*\d{1,2}|[A-Z]\s*\d{3,5})\s*[_\-]/.test(findingsProbe);
 
     if (findings.length > 0) {
+        // Keep distinct observations for the same Tree ID (e.g. KSE-G002 NT1–NT4).
+        // Still collapse exact duplicates from the overlapping extractors.
         const seen = new Set();
         const unique = [];
         for (const f of findings) {
-            if (seen.has(f.treeId)) continue;
-            seen.add(f.treeId);
+            if (!isValidTreeId(f.treeId)) continue;
+            const key = f.treeId + "\0" + f.obs;
+            if (seen.has(key)) continue;
+            seen.add(key);
             unique.push(f);
         }
         return unique;
@@ -713,7 +717,8 @@ function extractFindings(text) {
         if (treeIds.length > 0) {
             return treeIds.map(treeId => ({ treeId, obs: prose }));
         }
-        return [{ treeId: "", obs: prose }];
+        // No tree number in Findings or Tree Information: do not emit a blank-Tree-ID row.
+        return [];
     }
     return [];
 }
@@ -2032,7 +2037,9 @@ function parseTmuSiteCheckForm(text, filename) {
 // Stock AS Audit conclusion — not a real tree finding. Skip the row in TNS
 // extract/copy when Observation/Findings is essentially this sentence alone
 // (ignore wrap, extra/missing spaces, trailing punctuation). Keep the row if
-// a real finding is present alongside it.
+// a real finding is present alongside it. Broader rule: Findings without a
+// valid Tree ID are also omitted, so a longer general-items comment that
+// merely starts with this sentence is dropped for lack of a tree number.
 const STOCK_NO_GENERAL_COMMENT_COMPACT =
     "nogeneralcommentontreeworksmaintenanceandhorticulturalremindersafterregularauditinspection";
 
@@ -2066,7 +2073,9 @@ function parseReport(text, filename) {
     if (!dateReceived) dateReceived = todayDMY();
 
     const uniqueAll = extractFindings(text);
-    const unique = uniqueAll.filter(f => !isStockNoGeneralComment(f.obs));
+    // TNS / Excel: only numbered Findings (valid Tree ID). Drop stock
+    // no-comment sentences and any leftover empty-Tree-ID prose.
+    const unique = uniqueAll.filter(f => isValidTreeId(f.treeId) && !isStockNoGeneralComment(f.obs));
     const caseOut = caseNo || caseFromFilename(filename) || "";
 
     for (const f of unique) {
@@ -2085,27 +2094,8 @@ function parseReport(text, filename) {
         });
     }
 
-    if (rows.length === 0 && (caseOut || estate)) {
-        // Do not invent a placeholder row for a genuine no-comment audit conclusion
-        if ((uniqueAll.length && uniqueAll.every(f => isStockNoGeneralComment(f.obs)))
-            || findingsBlockIsStockNoGeneralComment(text)) {
-            return rows;
-        }
-        const rowEstate = resolveEstate(estate, "", caseOut) || "Unknown Estate";
-        rows.push({
-            kind: "audit",
-            cells: [
-                "AS",
-                rowEstate,
-                caseOut,
-                dateReceived,
-                "",
-                "(未能自動擷取 Findings，請手動補充)",
-                "", "", "", "", "", "", "", "", "", "", "", ""
-            ]
-        });
-    }
-
+    // Do not invent a blank-Tree-ID placeholder when Findings have no
+    // tree numbers (general-items comments, failed extract, etc.).
     return rows;
 }
 
