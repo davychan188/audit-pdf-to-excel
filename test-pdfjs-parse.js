@@ -5,7 +5,7 @@ const path = require('path');
 const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
 const hm = script.match(/const HEADERS_TNS = \[[\s\S]*?\];[\s\S]*?const HEADERS_REMOVAL = \[[\s\S]*?\];[\s\S]*?const headers = HEADERS_TNS;/);
-const pm = script.match(/const KNOWN_PLACES[\s\S]*?function parseReport\(text, filename\) \{[\s\S]*?\n\}/);
+const pm = script.match(/const OFFICIAL_ESTATES[\s\S]*?function parseReport\(text, filename\) \{[\s\S]*?\n\}/);
 if (!hm || !pm) {
   console.error('Failed to extract parser from index.html', !!hm, !!pm);
   process.exit(1);
@@ -450,8 +450,8 @@ checkTmu("tmu-oy-pdfjs", path.join(samplesRem, "tmu-oy-2026-004-pdfjs.txt"), "tm
   assert(estateFromCaseNo("TMU-OY-2026-004") === "On Yam Estate", "case OY");
   assert(estateFromTreeId("SPA-T0136") === "Shatin Pass Estate", "prefix SPA");
   assert(estateFromCaseNo("TMU-SPA-2026-003") === "Shatin Pass Estate", "case SPA");
-  assert(estateFromCaseNo("TMU-KC1-2026-004") === "Kwai Chung 1 Estate", "case KC1");
-  assert(estateFromCaseNo("TMU-KC2-2026-004") === "Kwai Chung 2 Estate", "case KC2");
+  assert(estateFromCaseNo("TMU-KC1-2026-004") === "Kwai Chung Estate 1", "case KC1");
+  assert(estateFromCaseNo("TMU-KC2-2026-004") === "Kwai Chung Estate 2", "case KC2");
   assert(estateFromCaseNo("TMU-SY-2026-004") === "Shek Yam Estate", "case SY");
   assert(estateFromTreeId("SY-T0001") === "Shek Yam Estate", "prefix SY");
   assert(estateFromTreeId("KC-T1344") === "", "bare KC prefix must not map to one estate");
@@ -508,23 +508,23 @@ const tmuSpa = [
     "Dead branches was observed", "Pruning works should be carried out to remove the deal branches.", "", "", "20/11/2026"]
 ];
 const tmuKc1 = [
-  ["TMU", "Kwai Chung 1 Estate", "TMU-KC1-2026-004", "30/11/2026", "KC-T1344",
+  ["TMU", "Kwai Chung Estate 1", "TMU-KC1-2026-004", "30/11/2026", "KC-T1344",
     "No foliage was found", "Conduct tree risk assessment; Apply for tree removal if required", "", "", "14/12/2026"],
-  ["TMU", "Kwai Chung 1 Estate", "TMU-KC1-2026-004", "30/11/2026", "KC-T1227",
+  ["TMU", "Kwai Chung Estate 1", "TMU-KC1-2026-004", "30/11/2026", "KC-T1227",
     "Dead fronds were found", "Crown cleaning is required", "", "", "14/12/2026"],
-  ["TMU", "Kwai Chung 1 Estate", "TMU-KC1-2026-004", "30/11/2026", "KC-T1142",
+  ["TMU", "Kwai Chung Estate 1", "TMU-KC1-2026-004", "30/11/2026", "KC-T1142",
     "Dead branches were found", "Crown cleaning is required", "", "", "14/12/2026"]
 ];
 const tmuKc2 = [
-  ["TMU", "Kwai Chung 2 Estate", "TMU-KC2-2026-004", "30/10/2026", "KC-T0893",
+  ["TMU", "Kwai Chung Estate 2", "TMU-KC2-2026-004", "30/10/2026", "KC-T0893",
     "Dead tree was found", "Apply for tree removal", "", "", "13/11/2026"],
-  ["TMU", "Kwai Chung 2 Estate", "TMU-KC2-2026-004", "30/10/2026", "KC-T0235",
+  ["TMU", "Kwai Chung Estate 2", "TMU-KC2-2026-004", "30/10/2026", "KC-T0235",
     "Dead tree was found", "Apply for tree removal", "", "", "13/11/2026"],
-  ["TMU", "Kwai Chung 2 Estate", "TMU-KC2-2026-004", "30/10/2026", "Undersized tree",
+  ["TMU", "Kwai Chung Estate 2", "TMU-KC2-2026-004", "30/10/2026", "Undersized tree",
     "Dead tree was found", "EMO please arrange for removal", "", "", "13/11/2026"],
-  ["TMU", "Kwai Chung 2 Estate", "TMU-KC2-2026-004", "30/10/2026", "Undesirable species on slope facing Kwai Yin Court",
+  ["TMU", "Kwai Chung Estate 2", "TMU-KC2-2026-004", "30/10/2026", "Undesirable species on slope facing Kwai Yin Court",
     "Leucaena leucocephala were found", "Apply for tree removal", "", "", "13/11/2026"],
-  ["TMU", "Kwai Chung 2 Estate", "TMU-KC2-2026-004", "30/10/2026", "KC-T0933",
+  ["TMU", "Kwai Chung Estate 2", "TMU-KC2-2026-004", "30/10/2026", "KC-T0933",
     "Dead tree was found", "Apply for tree removal", "", "", "13/11/2026"]
 ];
 
@@ -1318,5 +1318,149 @@ check("easeful-keep-finding", path.join(samplesRem, "AS_EasefulCourt_dead_tree-p
   console.log("extractAuditDate-and-full-tree-id PASS");
 })();
 
+
+
+// Official estate catalog: Shek Yam East vs Shek Yam, Fuk Loi, wrap / Finding glue, copy groups
+const tmuSye = [
+  ["TMU", "Shek Yam East Estate", "TMU-SYE-2026-004", "11/11/2026", "SYE-T0086",
+    "Dead fronds were found", "Crown cleaning is required", "", "", "25/11/2026"],
+  ["TMU", "Shek Yam East Estate", "TMU-SYE-2026-004", "11/11/2026", "SYE-T0136",
+    "Conflict with pedestrian was found", "Crown reduction is required", "", "", "25/11/2026"],
+  ["TMU", "Shek Yam East Estate", "TMU-SYE-2026-004", "11/11/2026", "SYE-T0534",
+    "Dead tree was found", "Apply for tree removal", "", "", "25/11/2026"],
+  ["TMU", "Shek Yam East Estate", "TMU-SYE-2026-004", "11/11/2026", "SYE-T0124",
+    "Hanger was found", "Crown cleaning is required", "", "", "25/11/2026"]
+];
+(() => {
+  function checkSye(lab, file, opts) {
+    opts = opts || {};
+    let text = fs.readFileSync(file, "utf8");
+    if (opts.normalize) text = normalizePdfText(text);
+    const filename = "TMU_Form-03_SYE-2026-004.pdf";
+    const rows = parseReport(text, filename);
+    assert(rows.length === 4, lab + ": expected 4 rows, got " + rows.length);
+    assert(rows.every(r => r.kind === "tmu" && r.cells.length === 18), lab + ": tmu 18 cols");
+    const c = rows.map(r => r.cells);
+    console.log(lab, c.map(r => ({ estate: r[1], case: r[2], date: r[3], tree: r[4], obs: r[5] })));
+    for (let i = 0; i < 4; i++) {
+      const want = padTmu(tmuSye[i]);
+      for (let j = 0; j < 10; j++) {
+        assert(c[i][j] === want[j], lab + ": row " + i + " col " + j + " expected " + JSON.stringify(want[j]) + " got " + JSON.stringify(c[i][j]));
+      }
+    }
+    assert(c.every(r => r[1] === "Shek Yam East Estate"), lab + ": not Yam East / Shek Yam");
+    assert(c.every(r => r[4] !== "SYE-T0124F" && !/Finding/i.test(r[4])), lab + ": tree id must not include Finding: " + c.map(r => r[4]));
+    // Existing TMU behaviour: one numbered finding stays one row (first ID only)
+    assert(c.map(r => r[4]).join(",") === "SYE-T0086,SYE-T0136,SYE-T0534,SYE-T0124", lab + ": no unsolicited T0088/T0090 split");
+    console.log(lab, "PASS");
+  }
+  const stem = path.join(samplesRem, "TMU_Form-03_SYE-2026-004");
+  checkSye("tmu-sye-pdfjs", stem + "-pdfjs.txt");
+  checkSye("tmu-sye-layout", stem + "-layout.txt");
+  checkSye("tmu-sye-pdfjs-live", stem + "-pdfjs.txt", { normalize: true });
+})();
+
+(() => {
+  assert(normalizePlace("Shek Yam East Estate / KC") === "Shek Yam East Estate", "norm SYE / KC: " + normalizePlace("Shek Yam East Estate / KC"));
+  assert(normalizePlace("Shek Yam East Estate") === "Shek Yam East Estate", "norm SYE full");
+  assert(normalizePlace("Shek Yam  East   Estate") === "Shek Yam East Estate", "norm SYE wrapped spaces");
+  assert(normalizePlace("Shek Yam Estate / KC") === "Shek Yam Estate", "norm SY / KC");
+  assert(normalizePlace("Shek Yam Estate") === "Shek Yam Estate", "norm SY stays");
+  assert(normalizePlace("Yam East Estate") === "Yam East Estate" || isWeakEstate(normalizePlace("Yam East Estate")), "Yam East kept or weak");
+  assert(isWeakEstate("Yam East Estate"), "Yam East Estate is weak");
+  assert(isWeakEstate("Unknown Estate") && isWeakEstate(""), "unknown/empty weak");
+  assert(!isWeakEstate("Shek Yam East Estate") && !isWeakEstate("Shek Yam Estate") && !isWeakEstate("On Yam Estate"), "official names are strong");
+  assert(resolveEstate("Yam East Estate", "SYE-T0086", "TMU-SYE-2026-004") === "Shek Yam East Estate", "resolve Yam East via SYE");
+  assert(resolveEstate("Unknown Estate", "FL-T0066", "TMU-FL-2026-004") === "Fuk Loi Estate", "resolve FL tree/case");
+  assert(estateFromTreeId("FL-T0066") === "Fuk Loi Estate" && estateFromCaseNo("TMU-FL-2026-004") === "Fuk Loi Estate", "FL map");
+  assert(estateFromTreeId("SYE-T0086") === "Shek Yam East Estate" && estateFromCaseNo("TMU-SYE-2026-004") === "Shek Yam East Estate", "SYE map");
+  assert(estateFromTreeId("SY-T0001") === "Shek Yam Estate" && estateFromCaseNo("TMU-SY-2026-004") === "Shek Yam Estate", "SY map");
+  assert(estateFromTreeId("OY-T0034") === "On Yam Estate", "OY stays");
+  assert(estateFromCaseNo("TMU-FHT-2026-001") === "Hoi Tai Factory Estate", "bare FHT is Hoi Tai");
+  assert(estateFromCaseNo("AS-FH-2026-001") === "Fu Heng Estate", "FH is Fu Heng");
+  assert(estateFromTreeId("FHT-T0001") === "Hoi Tai Factory Estate", "FHT tree is Hoi Tai");
+  assert(disambiguateFht("Hoi Tai Factory Estate", "Fu Heng Estate inspection", "") === "Fu Heng Estate", "FHT disambiguate by English");
+  assert(normalizePlace("Tai Wo Hau Estate") === "Tai Wo Hau Estate" && normalizePlace("Tai Wo Estate") === "Tai Wo Estate", "Tai Wo Hau vs Tai Wo");
+  assert(normalizePlace("Tin Yiu (2) Estate") === "Tin Yiu (2) Estate", "Tin Yiu (2) not swallowed");
+  assert(normalizePlace("Kwai Chung Estate 1") === "Kwai Chung Estate 1", "official KC1");
+  assert(normalizePlace("Kwai Chung 1 Estate") === "Kwai Chung Estate 1", "legacy KC1 alias");
+  assert(normalizePlace("Kwai Chung Estate 2") === "Kwai Chung Estate 2", "official KC2");
+  const fnSye = estateFromFilename("Shek Yam East Estate TMU Site Check.pdf");
+  assert(fnSye === "Shek Yam East Estate", "filename SYE English: " + fnSye);
+  const fnFl = estateFromFilename("Fuk Loi Estate_TMU-FL-2026-004.pdf");
+  assert(fnFl === "Fuk Loi Estate", "filename Fuk Loi English: " + fnFl);
+  const fnSy = estateFromFilename("Shek Yam Estate_TMU-SY-2026-004.pdf");
+  assert(fnSy === "Shek Yam Estate", "filename SY English not East: " + fnSy);
+  const smoke = {
+    KF: "Kwai Fong Estate",
+    KSW: "Kwai Shing West Estate",
+    CON: "Cheung On Estate",
+    CHF: "Choi Fai Estate",
+    LF: "Lok Fu Estate",
+    LP: "Lung Poon Court",
+    SWK: "Shek Wai Kok Estate",
+    YPW: "Yip Wong Estate",
+    SCO: "Shui Chuen O Estate",
+    SC: "Sun Chui Estate",
+    SM: "Shek Mun Estate",
+    SPA: "Shatin Pass Estate",
+    SPWA: "Shui Pin Wai Estate",
+    MT: "Mei Tung Estate",
+    MTI: "Mei Tin Estate",
+    TWH: "Tai Wo Hau Estate",
+    TWO: "Tai Wo Estate",
+    FCS: "Chun Shing Factory Estate",
+    FL: "Fuk Loi Estate",
+    SYE: "Shek Yam East Estate",
+    SY: "Shek Yam Estate"
+  };
+  for (const [code, name] of Object.entries(smoke)) {
+    assert(TREE_PREFIX_ESTATE[code] === name, "code " + code + " expected " + name + " got " + TREE_PREFIX_ESTATE[code]);
+  }
+  console.log("estate-catalog-units PASS");
+})();
+
+(() => {
+  const syeText = normalizePdfText(fs.readFileSync(path.join(samplesRem, "TMU_Form-03_SYE-2026-004-pdfjs.txt"), "utf8"));
+  const syeRows = parseReport(syeText, "TMU_Form-03_SYE-2026-004.pdf");
+  const ftaText = fs.readFileSync(path.join(samplesRem, "tpc-20261028-pdfjs.txt"), "utf8");
+  const ftaRows = parseReport(ftaText, "TPC_Tree_removal_summary_20261028.pdf");
+  assert(syeRows.length === 4 && syeRows.every(r => r.cells[1] === "Shek Yam East Estate"), "mixed source SYE");
+  assert(ftaRows.length === 1 && ftaRows[0].kind === "removal" && ftaRows[0].cells[2] === "Fu Tai Estate", "mixed source FTA");
+  const tnsMix = syeRows.concat([
+    { kind: "tmu", cells: ["TMU", "Unknown Estate", "TMU-XX-2026-001", "11/11/2026", "XX-T0001", "Dead tree", "", "", "", "", "", "", "", "", "", "", "", ""] }
+  ]);
+  // Invent a Fu Tai TNS-shaped row so TNS copy can be tested without a TMU FTA file
+  const ftaTns = {
+    kind: "tmu",
+    cells: ["TMU", "Fu Tai Estate", "TMU-FTA-2026-004", "11/11/2026", "FTA-T0515", "Dead tree was found", "Apply for tree removal", "", "", "25/11/2026", "", "", "", "", "", "", "", ""]
+  };
+  const mixedTns = syeRows.concat([ftaTns], tnsMix.slice(4));
+  const kc = filterRowsByCopyGroup(mixedTns, "kc_wtt");
+  const ty = filterRowsByCopyGroup(mixedTns, "ty_tns");
+  assert(kc.length === 4 && kc.every(r => r.cells[1] === "Shek Yam East Estate"), "KC&WTT TNS only SYE: " + kc.map(r => r.cells[1]));
+  assert(ty.length === 1 && ty[0].cells[1] === "Fu Tai Estate", "TY&TNS TNS only Fu Tai");
+  assert(unmappedRowCount(mixedTns) === 1, "unmapped Unknown counted: " + unmappedRowCount(mixedTns));
+  const kcTsv = kc.map(r => r.cells.join("\t")).join("\n");
+  const tyTsv = ty.map(r => r.cells.join("\t")).join("\n");
+  assert(!/^Source of Referral/i.test(kcTsv) && !kcTsv.startsWith("TMU\tEstate"), "KC TSV data-only no header");
+  assert(kcTsv.startsWith("TMU\tShek Yam East Estate\tTMU-SYE-2026-004"), "KC TSV first row: " + kcTsv.slice(0, 80));
+  assert(kc[0].cells.length === 18 && ty[0].cells.length === 18, "TSV source rows 18 cols");
+  assert(kcTsv.split("\n")[0].split("\t").length === 18, "KC TSV 18 cols");
+  assert(tyTsv.startsWith("TMU\tFu Tai Estate\tTMU-FTA-2026-004"), "TY TSV first row");
+  assert(tyTsv.split("\n")[0].split("\t").length === 18, "TY TSV 18 cols");
+  assert(filterRowsByCopyGroup([], "kc_wtt").length === 0, "empty group is empty");
+  assert(filterRowsByCopyGroup(ftaRows, "kc_wtt").length === 0, "FTA removal not in KC&WTT");
+  assert(filterRowsByCopyGroup(ftaRows, "ty_tns").length === 1, "FTA removal in TY&TNS");
+  const remTsv = filterRowsByCopyGroup(ftaRows, "ty_tns").map(r => r.cells.join("\t")).join("\n");
+  assert(!remTsv.startsWith("S/N") && !remTsv.startsWith("TPC / Non-TPC") && remTsv.startsWith("TPC\t"), "removal group copy still data-only");
+  // WTT code is Wan Tau Tong / ty_tns, not the KC&WTT region group
+  assert(estateCopyGroup("Wan Tau Tong Estate", "WTT-T0001", "AS-TNS-WTT-2026-001") === "ty_tns", "code WTT is ty_tns");
+  assert(estateCopyGroup("Fuk Loi Estate", "FL-T0066", "TMU-FL-2026-004") === "kc_wtt", "FL is kc_wtt");
+  assert(/複製 TNS（KC&(?:amp;)?WTT）/.test(html) && /複製 TNS（TY&(?:amp;)?TNS）/.test(html), "two TNS copy buttons");
+  assert(!/複製 TNS（Audit／TMU）/.test(html), "old single TNS button removed");
+  assert(/copyTnsKcBtn/.test(html) && /copyTnsTyBtn/.test(html), "TNS button ids");
+  console.log("tns-copy-group-split PASS");
+})();
 
 console.log('ALL PDFJS TESTS PASSED');

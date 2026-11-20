@@ -155,7 +155,7 @@
         4. 支援一次拖入多份報告（Chung On、Fung Wo、Kam Fung、Lee On、Lung Hang、Lek Yuen、Yau Oi、Tai Hing 等）<br>
         5. 亦支援 <strong>Tree Removal under Arboricultural Maintenance</strong> → 輸出 <strong>Tree Removal Summary</strong> 20 欄<br>
         6. 亦支援 <strong>TMU Site Check Report（TMU-Form-03）</strong> → 輸出 TNS（Source = TMU，Case deadline = Date Received + 14 日）<br>
-        7. 複製分兩掣：<strong>複製 TNS（Audit／TMU）</strong>（18 欄、無表頭）／<strong>複製 Tree Removal Summary</strong>（20 欄、無表頭）<br>
+        7. 複製分兩本 Excel：<strong>複製 TNS（KC&amp;WTT）</strong>／<strong>複製 TNS（TY&amp;TNS）</strong>（均為 18 欄、無表頭，對齊各檔 TNS 表）／<strong>複製 Tree Removal Summary（KC&amp;WTT）</strong>／<strong>複製 Tree Removal Summary（TY&amp;TNS）</strong>（均為現有 Removal 欄、無表頭）<br>
         8. 亦可下載本頁的 HTML 檔案離線分享（Email、Teams、共用資料夾）
     </div>
 
@@ -171,15 +171,17 @@
     <div id="fileList" class="file-list"></div>
 
     <div class="controls">
-        <button class="btn green" id="copyTnsBtn" onclick="copyTns()" disabled>📋 複製 TNS（Audit／TMU）</button>
-        <button class="btn orange" id="copyRemovalBtn" onclick="copyRemoval()" disabled>📋 複製 Tree Removal Summary</button>
+        <button class="btn green" id="copyTnsKcBtn" onclick="copyTnsGroup('kc_wtt')" disabled>📋 複製 TNS（KC&amp;WTT）</button>
+        <button class="btn green" id="copyTnsTyBtn" onclick="copyTnsGroup('ty_tns')" disabled>📋 複製 TNS（TY&amp;TNS）</button>
+        <button class="btn orange" id="copyRemovalKcBtn" onclick="copyRemovalGroup('kc_wtt')" disabled>📋 複製 Tree Removal Summary（KC&amp;WTT）</button>
+        <button class="btn orange" id="copyRemovalTyBtn" onclick="copyRemovalGroup('ty_tns')" disabled>📋 複製 Tree Removal Summary（TY&amp;TNS）</button>
         <button class="btn" onclick="clearAll()">🗑️ 清除全部</button>
     </div>
 
     <div id="tableContainer"></div>
 
     <div class="footer-note">
-        提示：PDF 必須是「可選取文字」的版本（不是純掃描圖片）。TNS（Audit／TMU Site Check）複製<strong>不含表頭</strong>（對齊 Master Referral List › TNS）；Tree Removal 複製<strong>不含表頭</strong>（對齊 Tree Removal Summary）。此工具只在瀏覽器本地處理，不會上傳任何檔案。
+        提示：PDF 必須是「可選取文字」的版本（不是純掃描圖片）。TNS（Audit／TMU Site Check）按屋邨分兩掣複製（KC&amp;WTT／TY&amp;TNS），<strong>不含表頭</strong>（18 欄，對齊 TNS 表）；Tree Removal 同樣按屋邨分掣複製，<strong>不含表頭</strong>。未對應屋邨的列不會進入任一剪貼簿。此工具只在瀏覽器本地處理，不會上傳任何檔案。
     </div>
 </div>
 
@@ -264,146 +266,222 @@ async function handleFiles(files) {
     updateCopyButtons();
 }
 
-const KNOWN_PLACES = [
-    "Kwai Chung 1 Estate", "Kwai Chung 2 Estate", "Kwai Shing East Estate", "Shatin Pass Estate",
-    "Kam Fung Court", "Mei Lam Estate", "Mei Tin Estate", "Sun Chui Estate", "Yan On Estate", "Yan Tin Estate",
-    "Tin Yiu (2) Estate", "Tin Yiu (1) Estate", "Tin Shui (1) Estate", "Tin Shui (2) Estate",
-    "Hoi Tai Factory Estate", "Butterfly Estate", "Kin Sang Estate", "Shek Mun Estate", "Shek Yam Estate",
-    "Chung On Estate", "Fung Wo Estate", "Lee On Estate", "Lung Hang Estate", "Lek Yuen Estate", "Ching Ho Estate",
-    "Yau Oi Estate", "Tai Yuen Estate", "Tai Hing Estate", "On Ting Estate", "On Yam Estate", "Fu Tai Estate", "Shui Pin Wai Estate",
-    "Shui Chuen O Estate", "Ching Tin Estate", "Leung King Estate", "Lung Yat Estate", "Po Tin Estate",
-    "Sam Shing Estate", "Tin King Estate", "Wo Tin Estate", "Wu King Estate", "Hung Fuk Estate",
-    "Long Ching Estate", "Long Shin Estate", "Tin Chak Estate", "Tin Ching Estate", "Tin Heng Estate",
-    "Tin Tsz Estate", "Tin Wah Estate", "Tin Yan Estate", "Tin Yat Estate", "Tin Yuet Estate",
-    "San Wai Court", "Cheung Lung Wai Estate", "Cheung Wah Estate", "Choi Po Court", "Choi Yuen Estate",
-    "Fai Ming Estate", "Ka Fuk Estate", "Po Shek Wu Estate", "Tin Ping Estate", "Wah Sum Estate",
-    "Yung Shing Court", "Queens Hill Estate", "Chun Shek Estate", "Chun Yeung Estate", "Hin Yiu Estate",
-    "Pok Hong Estate", "Sha Kok Estate", "Sui Wo Court", "Sun Tin Wai Estate", "Wo Che Estate",
-    "Fu Heng Estate", "Fu Shin Estate", "Fu Tip Estate", "Kwong Fuk Estate", "Po Heung Estate",
-    "Tai Wo Hau Estate", "Tai Wo Estate", "Wan Tau Tong Estate",
-    "Kwai Chung 1", "Kwai Chung 2", "Kwai Shing East", "Shatin Pass",
-    "Kam Fung", "Mei Lam", "Mei Tin", "Sun Chui", "Yan Tin", "Yan On", "Tin Yiu", "Tin Shui", "Hoi Tai Factory", "Butterfly", "Kin Sang", "Shek Mun", "Shek Yam",
-    "Chung On", "Fung Wo", "Lee On", "Lung Hang", "Lek Yuen", "Ching Ho", "Yau Oi", "Tai Yuen", "Tai Hing", "On Ting", "On Yam", "Fu Tai", "Shui Pin Wai",
-    "Shui Chuen O", "Ching Tin", "Leung King", "Lung Yat", "Po Tin", "Sam Shing", "Tin King", "Wo Tin", "Wu King",
-    "Hung Fuk", "Long Ching", "Long Shin", "Tin Chak", "Tin Ching", "Tin Heng", "Tin Tsz", "Tin Wah", "Tin Yan", "Tin Yat", "Tin Yuet",
-    "San Wai", "Cheung Lung Wai", "Cheung Wah", "Choi Po", "Choi Yuen", "Fai Ming", "Ka Fuk", "Po Shek Wu", "Tin Ping", "Wah Sum",
-    "Yung Shing", "Queens Hill", "Chun Shek", "Chun Yeung", "Hin Yiu", "Pok Hong", "Sha Kok", "Sui Wo", "Sun Tin Wai", "Wo Che",
-    "Fu Heng", "Fu Shin", "Fu Tip", "Kwong Fuk", "Po Heung", "Tai Wo Hau", "Tai Wo", "Wan Tau Tong"
+const OFFICIAL_ESTATES = [
+    { name: "High Prosperity Terrace", codes: ["HPT"], group: "kc_wtt" },
+    { name: "Kwai Chung Estate 1", codes: ["KC1"], group: "kc_wtt", aliases: ["Kwai Chung 1 Estate", "Kwai Chung 1"] },
+    { name: "Kwai Chung Estate 2", codes: ["KC2"], group: "kc_wtt", aliases: ["Kwai Chung 2 Estate", "Kwai Chung 2"] },
+    { name: "Kwai Fong Estate", codes: ["KF"], group: "kc_wtt" },
+    { name: "Kwai Hing Estate", codes: ["KH"], group: "kc_wtt" },
+    { name: "Kwai Luen Estate", codes: ["KWL"], group: "kc_wtt" },
+    { name: "Kwai Shing East Estate", codes: ["KSE"], group: "kc_wtt" },
+    { name: "Kwai Shing West Estate", codes: ["KSW"], group: "kc_wtt" },
+    { name: "Kwai Tsui Estate", codes: ["KT"], group: "kc_wtt" },
+    { name: "Lai King Estate", codes: ["LK"], group: "kc_wtt" },
+    { name: "Lai Yiu Estate", codes: ["LU"], group: "kc_wtt" },
+    { name: "On Yam Estate", codes: ["OY"], group: "kc_wtt" },
+    { name: "Shek Lei (1) Estate", codes: ["SL1"], group: "kc_wtt" },
+    { name: "Shek Lei (2) Estate", codes: ["SL2"], group: "kc_wtt" },
+    { name: "Shek Yam Estate", codes: ["SY"], group: "kc_wtt" },
+    { name: "Shek Yam East Estate", codes: ["SYE"], group: "kc_wtt" },
+    { name: "Tai Wo Hau Estate", codes: ["TWH"], group: "kc_wtt" },
+    { name: "Cheung Ching Estate", codes: ["CC"], group: "kc_wtt" },
+    { name: "Cheung Fat Estate", codes: ["CF"], group: "kc_wtt" },
+    { name: "Cheung Hang Estate", codes: ["CHG"], group: "kc_wtt" },
+    { name: "Cheung Hong Estate", codes: ["CG"], group: "kc_wtt" },
+    { name: "Cheung On Estate", codes: ["CON"], group: "kc_wtt" },
+    { name: "Cheung Shan Estate", codes: ["CS"], group: "kc_wtt" },
+    { name: "Cheung Wang Estate", codes: ["CGW"], group: "kc_wtt" },
+    { name: "Choi Fai Estate", codes: ["CHF"], group: "kc_wtt" },
+    { name: "Choi Hung Estate", codes: ["CH"], group: "kc_wtt" },
+    { name: "Choi Wan (1) Estate", codes: ["CWN1"], group: "kc_wtt" },
+    { name: "Choi Wan (2) Estate", codes: ["CWN2"], group: "kc_wtt" },
+    { name: "Chuk Yuen South Estate", codes: ["CYS"], group: "kc_wtt" },
+    { name: "Easeful Court", codes: ["EAC"], group: "kc_wtt" },
+    { name: "Fu Shan Estate", codes: ["FS"], group: "kc_wtt" },
+    { name: "Fuk Loi Estate", codes: ["FL"], group: "kc_wtt" },
+    { name: "Fung Tak Estate", codes: ["FT"], group: "kc_wtt" },
+    { name: "Lei Muk Shue Estate", codes: ["LMSE"], group: "kc_wtt" },
+    { name: "Lei Muk Shue (1) Estate", codes: ["LMS1"], group: "kc_wtt" },
+    { name: "Lei Muk Shue (2) Estate", codes: ["LMS2"], group: "kc_wtt" },
+    { name: "Lower Wong Tai Sin (II) Estate", codes: ["WTS2"], group: "kc_wtt" },
+    { name: "Lok Fu Estate", codes: ["LF"], group: "kc_wtt" },
+    { name: "Lung Poon Court", codes: ["LP"], group: "kc_wtt" },
+    { name: "Mei Tung Estate", codes: ["MT"], group: "kc_wtt" },
+    { name: "Shatin Pass Estate", codes: ["SPA"], group: "kc_wtt" },
+    { name: "Shek Wai Kok Estate", codes: ["SWK"], group: "kc_wtt" },
+    { name: "Tsz Ching Estate", codes: ["TC"], group: "kc_wtt" },
+    { name: "Tsz Hong Estate", codes: ["TZH"], group: "kc_wtt" },
+    { name: "Tsz Lok Estate", codes: ["TL"], group: "kc_wtt" },
+    { name: "Tsz Man Estate", codes: ["TM"], group: "kc_wtt" },
+    { name: "Tung Wui Estate", codes: ["TUW"], group: "kc_wtt" },
+    { name: "Upper Wong Tai Sin Estate", codes: ["UWTS"], group: "kc_wtt" },
+    { name: "Wang Tau Hom Estate", codes: ["WTH"], group: "kc_wtt" },
+    // Workbook Estate sheet: FHT = Hoi Tai Factory Estate; Fu Heng is FH.
+    { name: "Hoi Tai Factory Estate", codes: ["FHT"], group: "ty_tns", aliases: ["Hoi Tai Factory", "Hoi Tai"] },
+    { name: "Chun Shing Factory Estate", codes: ["FCS"], group: "ty_tns", aliases: ["Chun Shing Factory"] },
+    { name: "Cheung Lung Wai Estate", codes: ["CLW"], group: "ty_tns" },
+    { name: "Cheung Wah Estate", codes: ["CWA"], group: "ty_tns" },
+    { name: "Ching Ho Estate", codes: ["CHH"], group: "ty_tns" },
+    { name: "Choi Po Court", codes: ["CP"], group: "ty_tns" },
+    { name: "Choi Yuen Estate", codes: ["CY"], group: "ty_tns" },
+    { name: "Fai Ming Estate", codes: ["FM"], group: "ty_tns" },
+    { name: "Ka Fuk Estate", codes: ["KAF"], group: "ty_tns" },
+    { name: "Po Shek Wu Estate", codes: ["PSW"], group: "ty_tns" },
+    { name: "Tin Ping Estate", codes: ["TPG"], group: "ty_tns" },
+    { name: "Wah Sum Estate", codes: ["WS"], group: "ty_tns" },
+    { name: "Yung Shing Court", codes: ["YSG"], group: "ty_tns" },
+    { name: "Queens Hill Estate", codes: ["QH"], group: "ty_tns" },
+    { name: "Chun Shek Estate", codes: ["CNS"], group: "ty_tns" },
+    { name: "Chun Yeung Estate", codes: ["CNY"], group: "ty_tns" },
+    { name: "Chung On Estate", codes: ["CHO"], group: "ty_tns" },
+    { name: "Fung Wo Estate", codes: ["FUW"], group: "ty_tns" },
+    { name: "Heng On Estate", codes: ["HO"], group: "ty_tns" },
+    { name: "Hin Yiu Estate", codes: ["HYU"], group: "ty_tns" },
+    { name: "Kam Fung Court", codes: ["HKFU"], group: "ty_tns", aliases: ["Kam Fung"] },
+    { name: "Lee On Estate", codes: ["LEO"], group: "ty_tns" },
+    { name: "Lek Yuen Estate", codes: ["LY"], group: "ty_tns" },
+    { name: "Lung Hang Estate", codes: ["LH"], group: "ty_tns" },
+    { name: "Mei Lam Estate", codes: ["ML"], group: "ty_tns" },
+    { name: "Mei Tin Estate", codes: ["MTI"], group: "ty_tns" },
+    { name: "Pok Hong Estate", codes: ["PH"], group: "ty_tns" },
+    { name: "Sha Kok Estate", codes: ["SK"], group: "ty_tns" },
+    { name: "Shek Mun Estate", codes: ["SM"], group: "ty_tns" },
+    { name: "Shui Chuen O Estate", codes: ["SCO"], group: "ty_tns" },
+    { name: "Sui Wo Court", codes: ["HSW"], group: "ty_tns" },
+    { name: "Sun Chui Estate", codes: ["SC"], group: "ty_tns" },
+    { name: "Sun Tin Wai Estate", codes: ["STW"], group: "ty_tns" },
+    { name: "Wo Che Estate", codes: ["WC"], group: "ty_tns" },
+    { name: "Yan On Estate", codes: ["YAO"], group: "ty_tns" },
+    // Workbook Estate sheet: FH = Fu Heng Estate (not FHT).
+    { name: "Fu Heng Estate", codes: ["FH"], group: "ty_tns" },
+    { name: "Fu Shin Estate", codes: ["FSH"], group: "ty_tns" },
+    { name: "Fu Tip Estate", codes: ["FTP"], group: "ty_tns" },
+    { name: "Kwong Fuk Estate", codes: ["KFK"], group: "ty_tns" },
+    { name: "Po Heung Estate", codes: ["POH"], group: "ty_tns" },
+    { name: "Tai Wo Estate", codes: ["TWO"], group: "ty_tns" },
+    { name: "Tai Yuen Estate", codes: ["TY"], group: "ty_tns" },
+    { name: "Wan Tau Tong Estate", codes: ["WTT"], group: "ty_tns" },
+    { name: "Butterfly Estate", codes: ["BE"], group: "ty_tns" },
+    { name: "Ching Tin Estate", codes: ["CTI"], group: "ty_tns" },
+    { name: "Fu Tai Estate", codes: ["FTA"], group: "ty_tns" },
+    { name: "Kin Sang Estate", codes: ["KSG"], group: "ty_tns" },
+    { name: "Leung King Estate", codes: ["LKG"], group: "ty_tns" },
+    { name: "Lung Yat Estate", codes: ["LKY"], group: "ty_tns" },
+    { name: "On Ting Estate", codes: ["OT"], group: "ty_tns" },
+    { name: "Po Tin Estate", codes: ["POT"], group: "ty_tns" },
+    { name: "Sam Shing Estate", codes: ["SS"], group: "ty_tns" },
+    { name: "Tai Hing Estate", codes: ["TH"], group: "ty_tns" },
+    { name: "Tin King Estate", codes: ["TK"], group: "ty_tns" },
+    { name: "Wo Tin Estate", codes: ["WOT"], group: "ty_tns" },
+    { name: "Wu King Estate", codes: ["WK"], group: "ty_tns" },
+    { name: "Yau Oi Estate", codes: ["YO"], group: "ty_tns" },
+    { name: "Yan Tin Estate", codes: ["YNT"], group: "ty_tns" },
+    { name: "Hung Fuk Estate", codes: ["HFU"], group: "ty_tns" },
+    { name: "Long Ching Estate", codes: ["LCG"], group: "ty_tns" },
+    { name: "Long Shin Estate", codes: ["LSN"], group: "ty_tns" },
+    { name: "Shui Pin Wai Estate", codes: ["SPWA"], group: "ty_tns" },
+    { name: "Tin Chak Estate", codes: ["TCK"], group: "ty_tns" },
+    { name: "Tin Ching Estate", codes: ["TCG"], group: "ty_tns" },
+    { name: "Tin Heng Estate", codes: ["TNH"], group: "ty_tns" },
+    { name: "Tin Shui (1) Estate", codes: ["TS1"], group: "ty_tns" },
+    { name: "Tin Shui (2) Estate", codes: ["TS2"], group: "ty_tns" },
+    { name: "Tin Tsz Estate", codes: ["TTZ"], group: "ty_tns" },
+    { name: "Tin Wah Estate", codes: ["TWA"], group: "ty_tns" },
+    { name: "Tin Yan Estate", codes: ["TIA"], group: "ty_tns" },
+    { name: "Tin Yat Estate", codes: ["TYA"], group: "ty_tns" },
+    { name: "Tin Yiu (1) Estate", codes: ["TNY1"], group: "ty_tns" },
+    { name: "Tin Yiu (2) Estate", codes: ["TNY2"], group: "ty_tns" },
+    { name: "Tin Yuet Estate", codes: ["TYT"], group: "ty_tns" },
+    { name: "San Wai Court", codes: ["SWA"], group: "ty_tns" },
+    { name: "Yip Wong Estate", codes: ["YPW"], group: "ty_tns" }
 ];
 
-const FILENAME_PLACE = [
-    [/HKFU|Kam\s*Fung/i, "Kam Fung Court"],
-    [/CHO|Chung\s*On/i, "Chung On Estate"],
-    [/FUW|Fung\s*Wo/i, "Fung Wo Estate"],
-    [/LEO|Lee\s*On/i, "Lee On Estate"],
-    [/LH|Lung\s*Hang/i, "Lung Hang Estate"],
-    [/LY|Lek\s*Yuen/i, "Lek Yuen Estate"],
-    [/YNT|Yan\s*Tin/i, "Yan Tin Estate"],
-    [/CHH|Ching\s*Ho/i, "Ching Ho Estate"],
-    [/\bML\b|Mei\s*Lam/i, "Mei Lam Estate"],
-    [/YO|Yau\s*Oi/i, "Yau Oi Estate"],
-    [/\bTH\b|Tai\s*Hing/i, "Tai Hing Estate"],
-    [/Tai\s*Yuen/i, "Tai Yuen Estate"],
-    [/Mei\s*Lam/i, "Mei Lam Estate"],
-    [/Mei\s*Tin/i, "Mei Tin Estate"],
-    [/Sun\s*Chui/i, "Sun Chui Estate"],
-    [/Yan\s*On/i, "Yan On Estate"],
-    [/TNY2|Tin\s*Yiu\s*\(2\)/i, "Tin Yiu (2) Estate"],
-    [/TNY1|Tin\s*Yiu\s*\(1\)/i, "Tin Yiu (1) Estate"],
-    [/TS1|Tin\s*Shui\s*\(1\)/i, "Tin Shui (1) Estate"],
-    [/TS2|Tin\s*Shui\s*\(2\)/i, "Tin Shui (2) Estate"],
-    [/FHT|Hoi\s*Tai/i, "Hoi Tai Factory Estate"],
-    [/\bBE\b|Butterfly/i, "Butterfly Estate"],
-    [/KSG|Kin\s*Sang/i, "Kin Sang Estate"],
-    [/\bSM\b|Shek\s*Mun/i, "Shek Mun Estate"],
-    [/Shek\s*Yam|TMU[_-]?SY[_-]|_SY(?:[_.-]|$)/i, "Shek Yam Estate"],
-    [/Shui\s*Chuen\s*O/i, "Shui Chuen O Estate"],
-    [/On\s*Yam/i, "On Yam Estate"]
-];
+function placeKey(s) {
+    return String(s || "").replace(/\s+/g, " ").trim().toLowerCase();
+}
 
-const TREE_PREFIX_ESTATE = {
-    "FHT": "Hoi Tai Factory Estate",
-    "BE": "Butterfly Estate",
-    "CTI": "Ching Tin Estate",
-    "FTA": "Fu Tai Estate",
-    "KSG": "Kin Sang Estate",
-    "LKG": "Leung King Estate",
-    "LKY": "Lung Yat Estate",
-    "OT": "On Ting Estate",
-    "OY": "On Yam Estate",
-    "SPA": "Shatin Pass Estate",
-    "KC1": "Kwai Chung 1 Estate",
-    "KC2": "Kwai Chung 2 Estate",
-    "KSE": "Kwai Shing East Estate",
-    "POT": "Po Tin Estate",
-    "SS": "Sam Shing Estate",
-    "TH": "Tai Hing Estate",
-    "TK": "Tin King Estate",
-    "WOT": "Wo Tin Estate",
-    "WK": "Wu King Estate",
-    "YO": "Yau Oi Estate",
-    "YNT": "Yan Tin Estate",
-    "HFU": "Hung Fuk Estate",
-    "LCG": "Long Ching Estate",
-    "LSN": "Long Shin Estate",
-    "SPWA": "Shui Pin Wai Estate",
-    "TCK": "Tin Chak Estate",
-    "TCG": "Tin Ching Estate",
-    "TNH": "Tin Heng Estate",
-    "TS1": "Tin Shui (1) Estate",
-    "TS2": "Tin Shui (2) Estate",
-    "TTZ": "Tin Tsz Estate",
-    "TWA": "Tin Wah Estate",
-    "TIA": "Tin Yan Estate",
-    "TYA": "Tin Yat Estate",
-    "TNY1": "Tin Yiu (1) Estate",
-    "TNY2": "Tin Yiu (2) Estate",
-    "TYT": "Tin Yuet Estate",
-    "SWA": "San Wai Court",
-    "CLW": "Cheung Lung Wai Estate",
-    "CWA": "Cheung Wah Estate",
-    "CHH": "Ching Ho Estate",
-    "CP": "Choi Po Court",
-    "CY": "Choi Yuen Estate",
-    "FM": "Fai Ming Estate",
-    "KAF": "Ka Fuk Estate",
-    "PSW": "Po Shek Wu Estate",
-    "TPG": "Tin Ping Estate",
-    "WS": "Wah Sum Estate",
-    "YSG": "Yung Shing Court",
-    "QH": "Queens Hill Estate",
-    "CNS": "Chun Shek Estate",
-    "CNY": "Chun Yeung Estate",
-    "CHO": "Chung On Estate",
-    "FUW": "Fung Wo Estate",
-    "HO": "Heng On Estate",
-    "HYU": "Hin Yiu Estate",
-    "HKFU": "Kam Fung Court",
-    "LEO": "Lee On Estate",
-    "LY": "Lek Yuen Estate",
-    "LH": "Lung Hang Estate",
-    "ML": "Mei Lam Estate",
-    "MTI": "Mei Tin Estate",
-    "PH": "Pok Hong Estate",
-    "SK": "Sha Kok Estate",
-    "SM": "Shek Mun Estate",
-    "SY": "Shek Yam Estate",
-    "SCO": "Shui Chuen O Estate",
-    "HSW": "Sui Wo Court",
-    "SC": "Sun Chui Estate",
-    "STW": "Sun Tin Wai Estate",
-    "WC": "Wo Che Estate",
-    "YAO": "Yan On Estate",
-    "FH": "Fu Heng Estate",
-    "FSH": "Fu Shin Estate",
-    "FTP": "Fu Tip Estate",
-    "KFK": "Kwong Fuk Estate",
-    "POH": "Po Heung Estate",
-    "TWH": "Tai Wo Hau Estate",
-    "TWO": "Tai Wo Estate",
-    "TY": "Tai Yuen Estate",
-    "WTT": "Wan Tau Tong Estate"
-};
+function shortPlaceBody(name) {
+    return String(name || "").replace(/\s+(Estate|Court)$/i, "").trim();
+}
+
+const OFFICIAL_ESTATE_BY_KEY = Object.create(null);
+const KNOWN_PLACES = [];
+const TREE_PREFIX_ESTATE = {};
+const seenPlace = new Set();
+
+function registerPlaceAlias(alias, official) {
+    const key = placeKey(alias);
+    if (!key) return;
+    if (!OFFICIAL_ESTATE_BY_KEY[key]) OFFICIAL_ESTATE_BY_KEY[key] = official;
+    if (!seenPlace.has(key)) {
+        seenPlace.add(key);
+        KNOWN_PLACES.push(alias);
+    }
+}
+
+const ESTATE_COPY_GROUP = Object.create(null);
+
+for (const rec of OFFICIAL_ESTATES) {
+    const official = rec.name;
+    registerPlaceAlias(official, official);
+    const body = shortPlaceBody(official);
+    if (body && placeKey(body) !== placeKey(official)) registerPlaceAlias(body, official);
+    for (const alias of (rec.aliases || [])) registerPlaceAlias(alias, official);
+    for (const code of (rec.codes || [])) {
+        if (code && !TREE_PREFIX_ESTATE[code]) TREE_PREFIX_ESTATE[code] = official;
+    }
+    if (rec.group) {
+        ESTATE_COPY_GROUP[placeKey(official)] = rec.group;
+        if (body) ESTATE_COPY_GROUP[placeKey(body)] = rec.group;
+        for (const alias of (rec.aliases || [])) ESTATE_COPY_GROUP[placeKey(alias)] = rec.group;
+        for (const code of (rec.codes || [])) {
+            if (code) ESTATE_COPY_GROUP[String(code).toUpperCase()] = rec.group;
+        }
+    }
+}
+
+function officialPlaceName(name, matchedText) {
+    const cands = [name, matchedText, shortPlaceBody(name), shortPlaceBody(matchedText)];
+    for (const c of cands) {
+        const hit = OFFICIAL_ESTATE_BY_KEY[placeKey(c)];
+        if (hit) return hit;
+    }
+    return "";
+}
+
+function isOfficialEstateName(estate) {
+    const e = String(estate || "").replace(/\s+/g, " ").trim();
+    if (!e) return false;
+    const official = officialPlaceName(e, e);
+    return !!(official && placeKey(official) === placeKey(e));
+}
+
+const FILENAME_PLACE = [];
+const officialNamesByLen = OFFICIAL_ESTATES.map((r) => r.name).sort((a, b) => b.length - a.length);
+for (const name of officialNamesByLen) {
+    FILENAME_PLACE.push([new RegExp(escapeRegExp(name).replace(/ /g, "\\s*"), "i"), name]);
+}
+for (const rec of OFFICIAL_ESTATES) {
+    for (const alias of (rec.aliases || [])) {
+        if (placeKey(alias) === placeKey(rec.name)) continue;
+        if (alias.length < 6) continue;
+        FILENAME_PLACE.push([new RegExp(escapeRegExp(alias).replace(/ /g, "\\s*"), "i"), rec.name]);
+    }
+}
+for (const rec of OFFICIAL_ESTATES) {
+    for (const code of (rec.codes || [])) {
+        if (!code) continue;
+        FILENAME_PLACE.push([new RegExp("(?:^|[^A-Z0-9])" + escapeRegExp(code) + "(?:[^A-Z0-9]|$)", "i"), rec.name]);
+    }
+}
+
+function disambiguateFht(estate, text, filename) {
+    const blob = String(text || "") + "\n" + String(filename || "");
+    if (/fu\s*heng/i.test(blob)) return "Fu Heng Estate";
+    if (/hoi\s*tai/i.test(blob)) return "Hoi Tai Factory Estate";
+    return estate;
+}
+
 
 function estateFromTreeId(treeId) {
     if (!treeId) return "";
@@ -427,11 +505,14 @@ function estateFromCaseNo(caseNo) {
 
 function isWeakEstate(estate) {
     if (!estate) return true;
-    const e = String(estate).trim();
+    const e = String(estate).replace(/\s+/g, " ").trim();
     if (!e || e.length < 3) return true;
     if (/^Unknown\s+Estate$/i.test(e)) return true;
     // pdftotext may put a case number under Location:
     if (/^(?:AS|TNS|TY|TMU)(?:-[A-Z0-9]+)+-\d{4}-\d{3}$/i.test(e)) return true;
+    // Official catalog names are strong; partials such as "Yam East Estate" are not.
+    if (isOfficialEstateName(e)) return false;
+    if (/\b(Estate|Court|Terrace)\b/i.test(e)) return true;
     return false;
 }
 
@@ -439,6 +520,46 @@ function isWeakEstate(estate) {
 function resolveEstate(estate, treeId, caseNo) {
     if (!isWeakEstate(estate)) return estate;
     return estateFromTreeId(treeId) || estateFromCaseNo(caseNo) || estate || "";
+}
+
+/** kc_wtt or ty_tns from official estate name, then tree-ID / case-no prefix. Empty if unmapped.
+ *  Code WTT is Wan Tau Tong (ty_tns); region WTT on the other workbook is not used here.
+ */
+function estateCopyGroup(estate, treeId, caseNo) {
+    const official = officialPlaceName(estate, estate) || (isOfficialEstateName(estate) ? String(estate).replace(/\s+/g, " ").trim() : "");
+    if (official && ESTATE_COPY_GROUP[placeKey(official)]) return ESTATE_COPY_GROUP[placeKey(official)];
+    const prefix = treeId ? String(treeId).toUpperCase().split("-")[0] : "";
+    if (prefix && ESTATE_COPY_GROUP[prefix]) return ESTATE_COPY_GROUP[prefix];
+    if (caseNo) {
+        const parts = String(caseNo).toUpperCase().split("-").filter(Boolean);
+        let best = "";
+        let bestLen = 0;
+        for (const part of parts) {
+            if (ESTATE_COPY_GROUP[part] && part.length > bestLen) {
+                best = ESTATE_COPY_GROUP[part];
+                bestLen = part.length;
+            }
+        }
+        if (best) return best;
+    }
+    return "";
+}
+
+function rowCopyGroup(row) {
+    const c = (row && (row.cells || row)) || [];
+    const kind = row && row.kind;
+    if (kind === "removal") {
+        return estateCopyGroup(c[2], c[3], c[20] || "");
+    }
+    return estateCopyGroup(c[1], c[4], c[2] || "");
+}
+
+function filterRowsByCopyGroup(rows, group) {
+    return (rows || []).filter((r) => rowCopyGroup(r) === group);
+}
+
+function unmappedRowCount(rows) {
+    return (rows || []).filter((r) => !rowCopyGroup(r)).length;
 }
 
 
@@ -451,13 +572,18 @@ function knownPlaceBody(name) {
     return escapeRegExp(name).replace(/ /g, "\\s+") + "(?:\\s+(Estate|Court))?";
 }
 
-/** Format a known-place hit the same way normalizePlace used to. */
+/** Format a known-place hit as the official English name. */
 function formatKnownPlace(name, matchedText) {
+    const official = officialPlaceName(name, matchedText);
+    if (official) return official;
     if (/court/i.test(name) || /court/i.test(matchedText)) {
         return name.replace(/\s+(Estate|Court)$/i, "") + (/court/i.test(name) ? " Court" : ( /court/i.test(matchedText) ? " Court" : " Estate"));
     }
     if (/estate/i.test(name) || /estate/i.test(matchedText)) {
         return name.replace(/\s+(Estate|Court)$/i, "") + " Estate";
+    }
+    if (/terrace/i.test(name) || /terrace/i.test(matchedText)) {
+        return String(name).replace(/\s+$/i, "");
     }
     if (/^Kam Fung$/i.test(name)) return "Kam Fung Court";
     return name + " Estate";
@@ -491,20 +617,107 @@ function bestKnownPlaceInText(s) {
     return best;
 }
 
+function prepareEstateSearchText(s) {
+    let t = String(s || "");
+    t = t.replace(/\bEs\s+tate\b/gi, "Estate");
+    t = t.replace(/(\d)([A-Z][a-z]{2,})/g, "$1 $2");
+    t = t.replace(/((?:Estate|Court|Terrace)\s*\/\s*[A-Z]{2,6})(\d{1,2}\s*\.)/g, "$1 $2");
+    return t;
+}
+
+/** Reassemble a wrapped Estate/Region cell, e.g. "Shek Yam" + "East Estate / KC". */
+function officialEstateFromWrappedCell(text) {
+    const src = prepareEstateSearchText(text);
+    const re = /\b(Estate|Court|Terrace)\s*\/\s*([A-Z]{1,6}\d{0,2})\b/gi;
+    let best = "";
+    let m;
+    while ((m = re.exec(src))) {
+        const suf = m[1];
+        const window = src.slice(Math.max(0, m.index - 240), m.index);
+        const tokens = window.split(/\s+/).filter(Boolean);
+        const words = [];
+        for (let i = tokens.length - 1; i >= 0; i--) {
+            const tok = tokens[i];
+            if (/^\d{1,2}:\d{2}(?:-\d{1,2}:\d{2})?$/.test(tok)) continue;
+            if (/^\d{1,2}[.\/]\d{1,2}[.\/]\d{2,4}$/.test(tok)) continue;
+            if (/^[A-Z]{1,6}\d{0,2}-[A-Z0-9]+[,&]*$/i.test(tok)) continue;
+            if (/^\d{1,2}\.$/.test(tok)) continue;
+            if (/^[&,]+$/.test(tok)) continue;
+            if (/^(?:spp\.?|All|Ficus|and|&)$/i.test(tok)) continue;
+            if (/^[A-Za-z][A-Za-z'()0-9]*$/.test(tok) || /^\(\d+\)$/.test(tok) || /^\(II\)$/i.test(tok) || /^[12]$/.test(tok)) {
+                words.unshift(tok);
+                if (words.length >= 8) break;
+                continue;
+            }
+            if (/^\d+$/.test(tok) && tok !== "1" && tok !== "2") continue;
+            break;
+        }
+        for (let i = 0; i < words.length; i++) {
+            const cand = words.slice(i).join(" ") + " " + suf;
+            const official = officialPlaceName(cand, cand) || (function () {
+                const hit = bestKnownPlaceAtStart(cand);
+                return hit ? formatKnownPlace(hit.name, hit.matched) : "";
+            })();
+            if (official && isOfficialEstateName(official) && official.length >= best.length) best = official;
+        }
+    }
+    return best;
+}
+
+/** Longest official estate in text, including wrapped / junk-separated names. */
+function bestOfficialEstateInText(text) {
+    const src = prepareEstateSearchText(text);
+    let best = "";
+    let bestLen = 0;
+    const hit = bestKnownPlaceInText(src);
+    if (hit) {
+        const official = formatKnownPlace(hit.name, hit.matched);
+        if (isOfficialEstateName(official)) {
+            best = official;
+            bestLen = hit.matched.length;
+        }
+    }
+    const wrapped = officialEstateFromWrappedCell(src);
+    if (wrapped && wrapped.length > bestLen) {
+        best = wrapped;
+        bestLen = wrapped.length;
+    }
+    for (const rec of OFFICIAL_ESTATES) {
+        const words = rec.name.split(/\s+/);
+        if (words.length < 2) continue;
+        const parts = words.map((w, i) => (i === 0 ? escapeRegExp(w) : "[\\s\\S]{0,80}?" + escapeRegExp(w)));
+        const re = new RegExp("(?:^|[^A-Za-z])(" + parts.join("") + ")(?![A-Za-z])", "i");
+        const m = src.match(re);
+        if (m && rec.name.length > bestLen) {
+            best = rec.name;
+            bestLen = rec.name.length;
+        }
+    }
+    return best;
+}
+
 function normalizePlace(raw) {
     if (!raw) return "";
     let s = raw.replace(/\s+/g, " ").trim();
+    s = s.replace(/\bEs\s+tate\b/gi, "Estate");
     s = s.replace(/[\/|,].*$/, "").trim();
     s = s.replace(/\b(Sha Tin|Tuen Mun|Yuen Long|Kwai Tsing|Islands|District)\b.*$/i, "").trim();
     const best = bestKnownPlaceAtStart(s);
     if (best) return formatKnownPlace(best.name, best.matched);
+    const mid = bestKnownPlaceInText(s);
+    if (mid) return formatKnownPlace(mid.name, mid.matched);
     // Keep parentheses e.g. Tin Yiu (2) Estate
-    const ec = s.match(/^([A-Za-z]+(?:\s+[A-Za-z]+)*(?:\s*\(\d+\)|\s+\d+)?)\s+(Estate|Court)\b/i);
+    const ec = s.match(/^([A-Za-z]+(?:\s+[A-Za-z]+)*(?:\s*\(\d+\)|\s+\d+|\s+\(II\))?)\s+(Estate|Court|Terrace)\b/i);
     if (ec) {
         const base = ec[1].replace(/\s+/g, " ").trim();
         const suf = ec[2].charAt(0).toUpperCase() + ec[2].slice(1).toLowerCase();
-        return base + " " + suf;
+        const cand = base + " " + suf;
+        const official = officialPlaceName(cand, cand);
+        if (official) return official;
+        return cand;
     }
+    const official = officialPlaceName(s, s);
+    if (official) return official;
     return s.split(/\s+/).slice(0, 5).join(" ");
 }
 
@@ -1892,6 +2105,10 @@ function stripTmuFurniture(s) {
 
 function normalizeTmuPdfText(text) {
     let t = normalizePdfText(text || "");
+    // pdf.js glue: "55Shek Yam", "Estate/KC1." (region + item no), "SYE-T0124F inding :"
+    t = t.replace(/(\d)([A-Z][a-z]{2,})/g, "$1 $2");
+    t = t.replace(/([A-Z]{1,6}\d{0,2}-(?:LL\d{1,2}|[A-Z]\d{3,5}))F\s*inding\s*:/gi, "$1 Finding:");
+    t = t.replace(/((?:Estate|Court|Terrace)\s*\/\s*[A-Z]{2,6})(\d{1,2}\s*\.)/g, "$1 $2");
     // pdf.js / column layout glue Tree ID to Finding, Photo, or the time column
     t = t.replace(/([A-Z]{1,6}\d{0,2}-(?:LL\d{1,2}|[A-Z]\d{3,4}))(\d{1,2}:[0-5]\d)/gi, "$1 $2");
     t = t.replace(/([A-Z]{1,6}\d{0,2}-(?:LL\d{1,2}|[A-Z]\d{3,5}))(?=Photo|Finding|Recommendation|Estate|Overview|Date)/gi, "$1 ");
@@ -2064,16 +2281,16 @@ function isWeakTmuEstate(estate) {
 function normalizeTmuEstateName(raw) {
     let s = String(raw || "").replace(/\s+/g, " ").trim();
     s = s.replace(/(\d)(Estate|Court)\b/gi, "$1 $2");
+    s = s.replace(/\bEs\s+tate\b/gi, "Estate");
     s = s.replace(/\b\d{1,2}:\d{2}(?:\s*-\s*\d{1,2}:\d{2})?\b/g, " ");
     s = s.replace(/\s*\/\s*[A-Z]{1,6}\d{0,2}\s*$/i, "").trim();
     s = s.replace(/\s+/g, " ").trim();
-    if (/shatin\s+pass/i.test(s)) return "Shatin Pass Estate";
-    if (/kwai\s+chung\s*1\b/i.test(s)) return "Kwai Chung 1 Estate";
-    if (/kwai\s+chung\s*2\b/i.test(s)) return "Kwai Chung 2 Estate";
-    if (/on\s+yam/i.test(s)) return "On Yam Estate";
     if (!s) return "";
+    const official = officialPlaceName(s, s) || bestOfficialEstateInText(s);
+    if (official && !isWeakTmuEstate(official)) return official;
     const placed = normalizePlace(s);
     if (isWeakTmuEstate(placed)) return "";
+    if (isOfficialEstateName(placed)) return placed;
     const base = placed.replace(/\s+(Estate|Court)$/i, "");
     const known = KNOWN_PLACES.some((n) => n.toLowerCase() === placed.toLowerCase() || n.toLowerCase() === base.toLowerCase());
     if (!known && base.split(/\s+/).length < 2) return "";
@@ -2082,6 +2299,8 @@ function normalizeTmuEstateName(raw) {
 
 function extractTmuEstateCell(text) {
     const blob = repairTmuGluedPhrases(normalizeTmuPdfText(text) + "\n" + String(text || ""));
+    const official = bestOfficialEstateInText(blob);
+    if (official && !isWeakTmuEstate(official)) return official;
     const badName = /^(?:Time|Date|Findings?|Recommendation|Photo|Overview|Region|District|DETAILS|Inspection|Officer|Contract|Works|Mitigation|Name|Post)$/i;
     const badCode = /^(?:Region|District|Findings?|Recommendation|Photo|Time|Date|Overview|Form|Issued|DETAILS|Consultant|Contractor|Maintenance|Works)$/i;
     const isBadEstateName = (name) => {
@@ -2090,23 +2309,15 @@ function extractTmuEstateCell(text) {
         const first = n.split(/\s+/)[0];
         return !!(first && badName.test(first));
     };
-    if (/Shatin\s+Pass(?:\s+\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2})?\s+Estate\s*\/\s*WTT\b/i.test(blob)) {
-        return "Shatin Pass Estate";
-    }
-    if (/On\s+Yam(?:\s+\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2})?\s+Estate\s*\/\s*KC\b/i.test(blob)) {
-        return "On Yam Estate";
-    }
-    // "Shek Yam" may sit in a different column from "Estate / KC" (layout / pdf.js)
-    if (/Shek\s+Yam[\s\S]{0,180}?Estate\s*\/\s*KC\b/i.test(blob)) {
-        return "Shek Yam Estate";
-    }
     // Kwai Chung can be split from "1 Estate / KC" by the tree-id / time columns
     const kc = blob.match(/Kwai\s+Chung[\s\S]{0,180}?([12])\s+Estate\s*\/\s*KC\b/i);
-    if (kc) return normalizeTmuEstateName("Kwai Chung " + kc[1] + " Estate");
-    const re = /\b((?:Shatin\s+Pass|Kwai\s+Chung\s+[12]|On\s+Yam|Shek\s+Yam|[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z0-9]+){0,3}))(?:\s+\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2})?\s+(Estate|Court)\s*\/\s*([A-Z]{1,6}\d{0,2})\b/gi;
+    if (kc) {
+        const est = normalizeTmuEstateName("Kwai Chung " + kc[1] + " Estate");
+        if (est && !isWeakTmuEstate(est)) return est;
+    }
+    const re = /\b((?:Shatin\s+Pass|Kwai\s+Chung\s+[12]|On\s+Yam|Shek\s+Yam\s+East|Shek\s+Yam|[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z0-9]+){0,4}))(?:\s+\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2})?\s+(Estate|Court|Terrace)\s*\/\s*([A-Z]{1,6}\d{0,2})\b/gi;
     let m;
     while ((m = re.exec(blob)) !== null) {
-        // Do not let "Region Shek Yam Estate / KC" consume the real name; retry one character later
         if (isBadEstateName(m[1]) || badCode.test(m[3])) {
             re.lastIndex = m.index + 1;
             continue;
@@ -2122,16 +2333,8 @@ function extractTmuEstateFromHeader(text) {
     const flat = normalizeTmuPdfText(text).replace(/\r/g, "").replace(/\n+/g, " ");
     const cut = flat.search(/(?:^|[^0-9])1\.\s+/);
     const header = cut >= 0 ? flat.slice(0, cut) : flat;
-    const specific = [
-        [/Shatin\s+Pass(?:\s+Estate)?/i, "Shatin Pass Estate"],
-        [/Kwai\s+Chung\s*1(?:\s+Estate)?/i, "Kwai Chung 1 Estate"],
-        [/Kwai\s+Chung\s*2(?:\s+Estate)?/i, "Kwai Chung 2 Estate"],
-        [/On\s+Yam(?:\s+Estate)?/i, "On Yam Estate"],
-        [/Shek\s+Yam(?:\s+Estate)?/i, "Shek Yam Estate"]
-    ];
-    for (const [re, name] of specific) {
-        if (re.test(header)) return name;
-    }
+    const official = bestOfficialEstateInText(header);
+    if (official && !isWeakTmuEstate(official)) return official;
     const tmuHit = bestKnownPlaceInText(header);
     if (tmuHit && tmuHit.name.length >= 6) {
         const est = formatKnownPlace(tmuHit.name, tmuHit.matched);
@@ -2140,24 +2343,37 @@ function extractTmuEstateFromHeader(text) {
     return "";
 }
 
+function estateFromFilename(filename) {
+    const fn = String(filename || "");
+    if (!fn) return "";
+    const official = bestOfficialEstateInText(fn);
+    if (official && !isWeakEstate(official)) return official;
+    for (const [re, place] of FILENAME_PLACE) {
+        if (re.test(fn)) return place;
+    }
+    return "";
+}
+
 function extractTmuEstate(text, filename, treeId, caseNo) {
     const fromCell = extractTmuEstateCell(text);
-    if (fromCell && !isWeakTmuEstate(fromCell)) return fromCell;
+    if (fromCell && !isWeakTmuEstate(fromCell)) return disambiguateFht(fromCell, text, filename);
     const fromHeader = extractTmuEstateFromHeader(text);
-    if (fromHeader && !isWeakTmuEstate(fromHeader)) return fromHeader;
-    // Case no (TMU-KC1 / TMU-KC2 / TMU-SPA / TMU-OY) can disambiguate when the cell is missing.
+    if (fromHeader && !isWeakTmuEstate(fromHeader)) return disambiguateFht(fromHeader, text, filename);
+    const fromName = estateFromFilename(filename || "") || bestOfficialEstateInText(String(text || ""));
+    if (fromName && !isWeakTmuEstate(fromName)) return disambiguateFht(fromName, text, filename);
+    // Case no (TMU-KC1 / TMU-KC2 / TMU-SPA / TMU-OY / TMU-SYE / TMU-FL) can disambiguate when the cell is missing.
     // Do not map a bare tree prefix "KC" to a single estate.
     const prefix = treeId ? String(treeId).toUpperCase().split("-")[0] : "";
     const fromCase = estateFromCaseNo(caseNo);
-    if (fromCase) return fromCase;
+    if (fromCase) return disambiguateFht(fromCase, text, filename);
     if (prefix && prefix !== "KC") {
         const fromTree = estateFromTreeId(treeId);
-        if (fromTree) return fromTree;
+        if (fromTree) return disambiguateFht(fromTree, text, filename);
     }
     const fromFile = extractTmuCaseNo("", filename || "");
     if (fromFile) {
         const fe = estateFromCaseNo(fromFile);
-        if (fe) return fe;
+        if (fe) return disambiguateFht(fe, text, filename);
     }
     return "";
 }
@@ -2282,10 +2498,16 @@ function auditRows() { return allRows.filter(r => r.kind === 'audit' || r.kind =
 function removalRows() { return allRows.filter(r => r.kind === 'removal'); }
 
 function updateCopyButtons() {
-    const tnsBtn = document.getElementById('copyTnsBtn');
-    const remBtn = document.getElementById('copyRemovalBtn');
-    if (tnsBtn) tnsBtn.disabled = auditRows().length === 0;
-    if (remBtn) remBtn.disabled = removalRows().length === 0;
+    const audits = auditRows();
+    const removals = removalRows();
+    const setBtn = (id, n) => {
+        const btn = document.getElementById(id);
+        if (btn) btn.disabled = n === 0;
+    };
+    setBtn('copyTnsKcBtn', filterRowsByCopyGroup(audits, 'kc_wtt').length);
+    setBtn('copyTnsTyBtn', filterRowsByCopyGroup(audits, 'ty_tns').length);
+    setBtn('copyRemovalKcBtn', filterRowsByCopyGroup(removals, 'kc_wtt').length);
+    setBtn('copyRemovalTyBtn', filterRowsByCopyGroup(removals, 'ty_tns').length);
 }
 
 // Display-only line breaks for Removal headers; clipboard / HEADERS_REMOVAL stay unchanged.
@@ -2344,15 +2566,19 @@ function rowsToTsv(rows, includeHeader, headerList) {
     return lines.join('\n');
 }
 
-function copyKind(kind, btnId, label, includeHeader, headerList) {
-    const rows = kind === 'audit' ? auditRows() : removalRows();
+function copyKind(kind, btnId, label, includeHeader, headerList, group) {
+    const all = kind === 'audit' ? auditRows() : removalRows();
+    const rows = group ? filterRowsByCopyGroup(all, group) : all;
     if (!rows.length) return;
     const text = rowsToTsv(rows, !!includeHeader, headerList);
     const btn = document.getElementById(btnId);
     const originalLabel = btn ? btn.textContent : '';
     const headerNote = includeHeader ? '含表頭' : '無表頭';
+    const skipped = unmappedRowCount(all);
+    let msg = `已複製 ${rows.length} 行（${label}，${headerNote}）`;
+    if (skipped) msg += `；${skipped} 行未分類（Unknown / 未對應屋邨）未複製`;
     navigator.clipboard.writeText(text).then(() => {
-        setStatus(`已複製 ${rows.length} 行（${label}，${headerNote}，可貼到 Excel）`, 'success');
+        setStatus(msg, 'success');
         if (btn) {
             btn.textContent = '已複製 ✓';
             setTimeout(() => { btn.textContent = originalLabel; }, 1500);
@@ -2362,8 +2588,18 @@ function copyKind(kind, btnId, label, includeHeader, headerList) {
     });
 }
 
-function copyTns() { copyKind('audit', 'copyTnsBtn', 'TNS／Audit／TMU', false, null); }
-function copyRemoval() { copyKind('removal', 'copyRemovalBtn', 'Tree Removal Summary', false, HEADERS_REMOVAL); } // includeHeader=false
+function copyTnsGroup(group) {
+    const id = group === 'ty_tns' ? 'copyTnsTyBtn' : 'copyTnsKcBtn';
+    const label = group === 'ty_tns' ? 'TNS／TY&TNS' : 'TNS／KC&WTT';
+    copyKind('audit', id, label, false, null, group);
+}
+function copyRemovalGroup(group) {
+    const id = group === 'ty_tns' ? 'copyRemovalTyBtn' : 'copyRemovalKcBtn';
+    const label = group === 'ty_tns' ? 'Tree Removal Summary／TY&TNS' : 'Tree Removal Summary／KC&WTT';
+    copyKind('removal', id, label, false, HEADERS_REMOVAL, group);
+}
+function copyTns() { copyTnsGroup('kc_wtt'); }
+function copyRemoval() { copyRemovalGroup('kc_wtt'); }
 
 function clearAll() {
     allRows = [];
