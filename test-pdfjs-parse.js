@@ -1463,4 +1463,67 @@ const tmuSye = [
   console.log("tns-copy-group-split PASS");
 })();
 
+
+// TMU prose findings (no numbered "N. Finding:" items): Tai Yuen 16 Nov 2026
+const tmuTyProse = [
+  ["TMU", "Tai Yuen Estate", "TMU-TY-2026-004", "16/11/2026", "TY-T0010",
+    "TY-T0010 was found poor health", "please take necessary action", "", "", "30/11/2026"],
+  ["TMU", "Tai Yuen Estate", "TMU-TY-2026-004", "16/11/2026", "",
+    "A tree nearby TY-T0373 without Tree No. was found poor health", "please take necessary action", "", "", "30/11/2026"],
+  ["TMU", "Tai Yuen Estate", "TMU-TY-2026-004", "16/11/2026", "TY-T0358",
+    "TY-T0358 was found to have an overgrown crown that conflicts with a nearby tree.",
+    "Please take the necessary action.", "", "", "30/11/2026"]
+];
+(() => {
+  assert(extractTmuDate("16 Nov 2026") === "16/11/2026", "month date 16 Nov 2026: " + extractTmuDate("16 Nov 2026"));
+  assert(extractTmuDate("16Nov 20261545-1715") === "16/11/2026", "glued 16Nov 20261545: " + extractTmuDate("16Nov 20261545-1715"));
+  assert(extractTmuDate("Date / Time 16 Nov 2026 1545 - 1715") === "16/11/2026", "date/time line");
+  assert(addDaysUnpadded("16/11/2026", 14) === "30/11/2026", "deadline 16/11+14");
+  assert(extractTmuDate("11.11.2026 15:35-15:55") === "11/11/2026", "numeric date still works");
+  const stem = path.join(samplesRem, "TMU_Form-03_TY-2026-004");
+  const filename = "TMU-Form-03_TMU Site Check Report (issued 05-22) TY 20261116.pdf";
+  function checkTyFile(lab, file) {
+    checkTmuRows(lab, file, filename, tmuTyProse);
+    const rows = parseReport(fs.readFileSync(file, "utf8"), filename);
+    assert(!rows.some(r => /未能自動擷取/.test(r.cells[5])), lab + ": no fallback");
+    assert(rows[1].cells[4] === "", lab + ": blank not T0373 got " + rows[1].cells[4]);
+    assert(/A tree nearby TY-T0373 without Tree No\./.test(rows[1].cells[5]), lab + ": nearby wording");
+    assert(filterRowsByCopyGroup(rows, "ty_tns").length === 3, lab + ": all 3 in TY&TNS");
+    assert(filterRowsByCopyGroup(rows, "kc_wtt").length === 0, lab + ": none in KC&WTT");
+    const tsv = filterRowsByCopyGroup(rows, "ty_tns").map(r => r.cells.join("\t")).join("\n");
+    assert(!/^Source of Referral/i.test(tsv) && tsv.startsWith("TMU\tTai Yuen Estate\tTMU-TY-2026-004"), lab + ": TSV data-only");
+    assert(tsv.split("\n").every(line => line.split("\t").length === 18), lab + ": TSV 18 cols");
+    assert(unmappedRowCount(rows) === 0, lab + ": all rows mapped");
+  }
+  checkTyFile("tmu-ty-prose-pdftotext", stem + "-pdftotext.txt");
+  checkTyFile("tmu-ty-prose-layout", stem + "-layout.txt");
+  checkTyFile("tmu-ty-prose-pdfjs", stem + "-pdfjs.txt");
+  for (const [lab, file, mode] of [
+    ["tmu-ty-prose-pdfjs-live", stem + "-pdfjs.txt", "pdf"],
+    ["tmu-ty-prose-pdfjs-tmu", stem + "-pdfjs.txt", "tmu"],
+    ["tmu-ty-prose-layout-live", stem + "-layout.txt", "pdf"]
+  ]) {
+    let text = fs.readFileSync(file, "utf8");
+    text = mode === "tmu" ? normalizeTmuPdfText(text) : normalizePdfText(text);
+    const rows = parseReport(text, filename);
+    const c = rows.map(r => r.cells);
+    console.log(lab, c.map(r => ({ estate: r[1], case: r[2], date: r[3], tree: r[4], obs: r[5], mit: r[6], deadline: r[9] })));
+    assert(rows.length === 3, lab + ": expected 3 rows, got " + rows.length);
+    assert(rows.every(r => r.kind === "tmu" && r.cells.length === 18), lab + ": tmu 18 cols");
+    assert(!c.some(r => /未能自動擷取/.test(r[5])), lab + ": no fallback placeholder");
+    for (let i = 0; i < 3; i++) {
+      const want = padTmu(tmuTyProse[i]);
+      for (let j = 0; j < 10; j++) {
+        assert(c[i][j] === want[j], lab + ": row " + i + " col " + j + " expected " + JSON.stringify(want[j]) + " got " + JSON.stringify(c[i][j]));
+      }
+    }
+    assert(c[1][4] === "", lab + ": nearby tree has blank Tree ID");
+    assert(!c.some(r => r[4] === "TY-T0373"), lab + ": TY-T0373 is not a Tree ID");
+    assert(/A tree nearby TY-T0373 without Tree No\./.test(c[1][5]), lab + ": nearby wording");
+    assert(filterRowsByCopyGroup(rows, "ty_tns").length === 3 && filterRowsByCopyGroup(rows, "kc_wtt").length === 0, lab + ": TY&TNS clipboard only");
+    console.log(lab, "PASS");
+  }
+  console.log("tmu-ty-prose-findings PASS");
+})();
+
 console.log('ALL PDFJS TESTS PASSED');

@@ -1988,8 +1988,28 @@ function extractTmuCaseNo(text, filename) {
     return trySrc(normalizePdfText(filename || "")) || trySrc(filename || "");
 }
 
+const TMU_MONTHS = {
+    jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3,
+    apr: 4, april: 4, may: 5, jun: 6, june: 6, jul: 7, july: 7,
+    aug: 8, august: 8, sep: 9, sept: 9, september: 9,
+    oct: 10, october: 10, nov: 11, november: 11, dec: 12, december: 12
+};
+
+function extractTmuMonthDate(src) {
+    // "16 Nov 2026", "16Nov 2026", or year glued to military time: "16 Nov 20261545-1715"
+    const re = /\b(\d{1,2})\s*(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s*(\d{4})(?:(?:[01]\d|2[0-3])[0-5]\d)?\b/gi;
+    let m;
+    while ((m = re.exec(String(src || ""))) !== null) {
+        const month = TMU_MONTHS[m[2].toLowerCase().replace(/\.$/, "")];
+        if (!month) continue;
+        const out = formatUnpaddedDMY(m[1], month, m[3]);
+        if (out) return out;
+    }
+    return "";
+}
+
 function extractTmuDate(text) {
-    const blobs = [String(text || ""), normalizePdfText(text || "")];
+    const blobs = [String(text || ""), normalizePdfText(text || ""), normalizeTmuPdfText(text || "")];
     for (const src of blobs) {
         // pdf.js may glue the year to the hour: "11 . 11 .202614:"
         const glued = src.match(/\b(\d{1,2})\s*[./]\s*(\d{1,2})\s*[./]\s*(\d{4})([01]\d|2[0-3])\s*:/);
@@ -2004,6 +2024,10 @@ function extractTmuDate(text) {
             const out = formatUnpaddedDMY(m[1], m[2], m[3] + m[4]);
             if (out) return out;
         }
+    }
+    for (const src of blobs) {
+        const out = extractTmuMonthDate(src);
+        if (out) return out;
     }
     return "";
 }
@@ -2085,6 +2109,8 @@ function repairTmuGluedPhrases(s) {
     t = t.replace(/\bfoliagwas\b/gi, "foliage was");
     t = t.replace(/\b(foliage|fronds|frond|branches|branch|tree|trees|climber)(was|were|is|are)\b/gi, "$1 $2");
     t = t.replace(/\b(deal|dead)\s+branch\s+es\b/gi, "$1 branches");
+    // normalizePdfText glues the article in "A tree nearby …"
+    t = t.replace(/\bAtree\b/g, "A tree");
     return t;
 }
 
@@ -2119,6 +2145,10 @@ function normalizeTmuPdfText(text) {
     t = t.replace(/(\d)([12]\d|3[01])([./]\d{1,2}[./]\d{2,4})/g, "$1 $2$3");
     t = t.replace(/\bDETAILS(?=Estate|Date|Photo|Finding|Region)/g, "DETAILS ");
     t = t.replace(/(Estate\s*\/\s*[A-Z]{2,5}\d{0,2})(?=Finding|Recommendation|Photo|Overview|Date)/g, "$1 ");
+    // "Estate/TNSTY-T0010" / "Estate/TNS TY-T0010": require a 2+ letter tree prefix so TNS+TY is not read as TNST+Y
+    t = t.replace(/(\/(?:[A-Z]{2,4}\d{0,2}))([A-Z]{2,6}\d{0,2}-(?:LL\d{1,2}|[A-Z]\d{3,5}))/g, "$1 $2");
+    // Year glued to 24-hour times without a colon: "20261545-1715"
+    t = t.replace(/(20\d{2})((?:[01]\d|2[0-3])[0-5]\d\s*-\s*(?:[01]\d|2[0-3])[0-5]\d)/g, "$1 $2");
     t = joinSplitTmuWords(t);
     t = repairTmuGluedPhrases(t);
     t = t.replace(/[ \t]+/g, " ");
@@ -2219,6 +2249,147 @@ function isTmuDateFurnitureLabel(label) {
     return false;
 }
 
+
+function stripTmuProseFurniture(s) {
+    let t = String(s || "");
+    const patterns = [
+        /\bTMU\s*-?\s*Form\s*-?\s*\d+\b/gi,
+        /\(?\s*Issued\s+\d{1,2}\s*\/\s*\d{1,2}\s*\)?/gi,
+        /\bPhoto\s*\(\s*with\s+description\s+of\s+key\s+issue\s*\)/gi,
+        /\bDate\s*\/\s*Time(?=[A-Z0-9]|$|\s|\/)/gi,
+        /\bEstate\s*\/\s*Region\b/gi,
+        /\bFindings\s+and\s+Recommendation\b/gi,
+        /\bFindings\s+and\b/gi,
+        /\bEstate\s*\/\s*Findings\b/gi,
+        /\bMitigation\s+Required\s*:?\s*Yes\s*\/\s*No\s*\*?/gi,
+        /\bRoutine Maintenance\s*\/\s*Tree Works\s*\*?/gi,
+        /\*\s*Delete as appropriate\*?/gi,
+        /\bDETAILS\b/g,
+        /\bInspection Officer\s*:?/gi,
+        /\bContract reference\s*:?/gi,
+        /\bWorks concerned\s*:?/gi,
+        /\((?:post|Name)\)/gi,
+        /\d*ALM[I]?\s*\/\s*TM\d+\b/gi,
+        /\bRecommendation\b/gi,
+        /\bOverview\b/gi,
+        /\bRegion\b/gi
+    ];
+    for (const re of patterns) t = t.replace(re, " ");
+    return t;
+}
+
+/** Flatten Findings-column prose, repairing wraps and pdftotext column order. */
+function prepareTmuProseText(text) {
+    let t = String(text || "").replace(/\r/g, "\n");
+    // Strip the Photo header first so "TY-\nPhoto\nT0373" does not become "TY-Photo"
+    t = t.replace(/\bPhoto\s*\(\s*with\s+description\s+of\s+key\s+issue\s*\)/gi, "\n");
+    t = t.replace(/\b([A-Z]{1,6}\d{0,2})-\s*[\n ]+\s*([A-Z]\d{3,5})\b/g, "$1-$2");
+    t = t.replace(/\n+/g, " ");
+    t = t.replace(/[ \t]+/g, " ");
+    t = stripTmuProseFurniture(t);
+    t = t.replace(/\s*\/\s*/g, "/");
+    t = t.replace(/\s*-\s*/g, "-");
+    t = repairTmuGluedPhrases(t);
+    t = t.replace(/(\/(?:[A-Z]{2,4}\d{0,2}))([A-Z]{2,6}\d{0,2}-(?:LL\d{1,2}|[A-Z]\d{3,5}))/g, "$1 $2");
+    t = t.replace(/(20\d{2})((?:[01]\d|2[0-3])[0-5]\d\s*-\s*(?:[01]\d|2[0-3])[0-5]\d)/g, "$1 $2");
+    t = stripTmuProseFurniture(t);
+    // pdftotext default may emit the wrapped clause before "ID was found"
+    t = t.replace(
+        /\b(?:Estate|Court)\/[A-Z]{2,6}\d{0,2}\s+((?:[a-z][^A-Z]*?))\s+([A-Z]{1,6}\d{0,2}-(?:LL\d{1,2}|[A-Z]\d{3,5}))\s+was found\b/g,
+        (m, frag, id) => {
+            const f = String(frag || "").replace(/\s+/g, " ").trim();
+            if (!f || /\bwas found\b/i.test(f) || /\bwithout\s+Tree\s+No/i.test(f) || /tree nearby/i.test(f)) return m;
+            return id + " was found " + f;
+        }
+    );
+    t = t.replace(/\b(?:[01]\d|2[0-3])[0-5]\d\s*-\s*(?:[01]\d|2[0-3])[0-5]\d\b/g, " ");
+    t = t.replace(/\b\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}\b/g, " ");
+    t = t.replace(/\b(?:Estate|Court)\/[A-Z]{2,6}\d{0,2}(?!-[A-Z]?\d)/gi, " ");
+    t = t.replace(/\s+/g, " ").trim();
+    return t;
+}
+
+function cleanupTmuProseBlock(s) {
+    let t = String(s || "").replace(/\s+/g, " ").trim();
+    t = repairTmuGluedPhrases(t);
+    const cut = t.match(/^(.*?please\s+take(?:\s+the)?\s+necessary\s+action\.?)(\s+.*)?$/i);
+    if (cut) t = cut[1].trim();
+    t = t.replace(/^[:.\-\s]+/, "").replace(/[:\-\s]+$/, "").trim();
+    return t;
+}
+
+function tmuProseTreeId(sentence) {
+    const t = String(sentence || "").trim();
+    // "A tree nearby TY-T0373 without Tree No." — the ID is a neighbour, not this tree
+    if (/\ba tree nearby\b/i.test(t) && /\bwithout\s+Tree\s+No\.?/i.test(t)) return "";
+    const m = t.match(/^([A-Z]{1,6}\d{0,2}-(?:LL\d{1,2}|[A-Z]\d{3,5}))\b/i);
+    if (!m) return "";
+    const id = normalizeTreeId(m[1]);
+    return isValidTreeId(id) ? id : "";
+}
+
+function splitTmuProseClauses(text) {
+    const t = String(text || "").replace(/\s+/g, " ").trim();
+    const m = t.match(/^(.*?)([,.]\s*)(please\s+take(?:\s+the)?\s+necessary\s+action\.?)$/i);
+    if (m) {
+        let finding = m[1].trim();
+        if (m[2].trim().startsWith(".")) finding += ".";
+        return { finding, rec: m[3].trim() };
+    }
+    return { finding: t, rec: "" };
+}
+
+function parseTmuProseBlob(blob) {
+    const startRe = /([A-Z]{1,6}\d{0,2}-(?:LL\d{1,2}|[A-Z]\d{3,5}))\s+was found\b|\bA tree nearby\s+[A-Z]{1,6}\d{0,2}-(?:LL\d{1,2}|[A-Z]\d{3,5})\s+without\s+Tree\s+No\./gi;
+    const starts = [];
+    let m;
+    while ((m = startRe.exec(blob)) !== null) starts.push(m.index);
+    const trees = [];
+    for (let i = 0; i < starts.length; i++) {
+        const raw = blob.slice(starts[i], i + 1 < starts.length ? starts[i + 1] : blob.length);
+        const cleaned = cleanupTmuProseBlock(raw);
+        if (!cleaned) continue;
+        const parts = splitTmuProseClauses(cleaned);
+        if (!parts.finding) continue;
+        trees.push({ treeId: tmuProseTreeId(cleaned), finding: parts.finding, rec: parts.rec });
+    }
+    return trees;
+}
+
+function scoreTmuProseTrees(trees) {
+    let s = trees.length * 100;
+    for (const t of trees) {
+        s += String(t.finding || "").length + String(t.rec || "").length;
+        const id = String(t.treeId || "");
+        if (id && isValidTreeId(id) && /^[A-Z]{2,}/.test(id)) s += 30;
+        if (!id && /\ba tree nearby\b/i.test(t.finding) && /\bwithout\s+Tree\s+No/i.test(t.finding)) s += 40;
+        if (id && /\ba tree nearby\b/i.test(t.finding) && new RegExp("nearby\\s+" + id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i").test(t.finding)) s -= 200;
+        if (/未能自動擷取/.test(t.finding || "")) s -= 200;
+    }
+    return s;
+}
+
+/** Unnumbered Findings-and-Recommendation prose (no "1. Finding:" items). */
+function extractTmuProseFindings(text) {
+    const raw = String(text || "");
+    const variants = [raw, normalizePdfText(raw), normalizeTmuPdfText(raw)];
+    let best = [];
+    let bestScore = -1;
+    const seen = new Set();
+    for (const src of variants) {
+        const prepared = prepareTmuProseText(src);
+        if (seen.has(prepared)) continue;
+        seen.add(prepared);
+        const trees = parseTmuProseBlob(prepared);
+        const score = scoreTmuProseTrees(trees);
+        if (score > bestScore) {
+            bestScore = score;
+            best = trees;
+        }
+    }
+    return best;
+}
+
 function extractTmuTrees(text) {
     const flat = normalizeTmuPdfText(text).replace(/\r/g, "").replace(/\n+/g, " ");
     const itemRe = /(?:^|[^0-9])(\d{1,2})\.\s+/g;
@@ -2263,7 +2434,8 @@ function extractTmuTrees(text) {
         rec = cleanupTmuClause(rec);
         trees.push({ treeId, finding, rec });
     }
-    return trees;
+    if (trees.length) return trees;
+    return extractTmuProseFindings(text);
 }
 
 function isWeakTmuEstate(estate) {
